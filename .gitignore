@@ -50,3 +50,7 @@ Cod-*.zip
 
 # Local secrets
 .env
+
+# Build Artifacts
+*.dmg
+*.exe
