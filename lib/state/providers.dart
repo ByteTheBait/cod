@@ -4,6 +4,7 @@ import '../llm/claude.dart';
 import '../llm/gemini.dart';
 import '../llm/groq.dart';
 import '../llm/ollama.dart';
+import '../llm/custom.dart';
 import '../models/config.dart';
 import '../models/task.dart';
 import '../services/minnow_sync.dart';
@@ -20,6 +21,7 @@ final llmRegistryProvider = Provider<Map<String, LLMProvider>>((_) => {
       'gemini': GeminiProvider(),
       'groq': GroqProvider(),
       'ollama': OllamaProvider(),
+      'custom': CustomProvider(),
     });
 
 final sessionsProvider =

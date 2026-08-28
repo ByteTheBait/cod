@@ -17,6 +17,7 @@ class ProviderBadge extends StatelessWidget {
     'gemini': Color(0xFF4285F4),
     'groq': Color(0xFF00B4D8),
     'ollama': Color(0xFF7CB77C),
+    'custom': Color(0xFF9C6ADE),
   };
 
   @override

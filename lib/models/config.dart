@@ -125,6 +125,13 @@ class AppConfig {
             selectedModel: 'llama3.2',
             models: ['llama3.2', 'mistral', 'codellama', 'gemma2'],
           ),
+          'custom': const ProviderConfig(
+            id: 'custom',
+            name: 'Custom',
+            baseUrl: 'https://api.openai.com/v1',
+            selectedModel: 'gpt-4o',
+            models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
+          ),
         },
       );
 }

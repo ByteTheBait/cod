@@ -32,15 +32,8 @@ class SettingsScreen extends ConsumerWidget {
             providers: config.providers.values.toList(),
             onChanged: (id) => ref.read(configProvider.notifier).setActiveProvider(id),
           ),
-          const SizedBox(height: 24),
-          _SectionHeader('Providers'),
-          const SizedBox(height: 8),
-          ...config.providers.values.map(
-            (p) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _ProviderCard(providerId: p.id),
-            ),
-          ),
+          const SizedBox(height: 16),
+          _ProviderCard(providerId: config.activeProviderId),
           const SizedBox(height: 24),
           _SectionHeader('Daemon'),
           const SizedBox(height: 8),
@@ -94,6 +87,7 @@ class _ProviderSelector extends StatelessWidget {
     'gemini': Color(0xFF4285F4),
     'groq': Color(0xFF00B4D8),
     'ollama': Color(0xFF7CB77C),
+    'custom': Color(0xFF9C6ADE),
   };
 
   @override
@@ -149,11 +143,27 @@ class _ProviderCardState extends ConsumerState<_ProviderCard> {
   @override
   void initState() {
     super.initState();
+    _loadControllers();
+  }
+
+  void _loadControllers() {
     final config = ref.read(configProvider);
     final p = config.providers[widget.providerId]!;
     _keyCtrl = TextEditingController(text: p.apiKey);
     _urlCtrl = TextEditingController(text: p.baseUrl);
     _modelCtrl = TextEditingController(text: p.selectedModel);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProviderCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.providerId != widget.providerId) {
+      _keyCtrl.dispose();
+      _urlCtrl.dispose();
+      _modelCtrl.dispose();
+      _keyVisible = false;
+      _loadControllers();
+    }
   }
 
   @override
@@ -216,8 +226,8 @@ class _ProviderCardState extends ConsumerState<_ProviderCard> {
               onChanged: (v) => notifier.setApiKey(p.id, v),
             ),
           ],
-          // Base URL (ollama only)
-          if (p.id == 'ollama') ...[
+          // Base URL (ollama and custom only)
+          if (p.id == 'ollama' || p.id == 'custom') ...[
             const SizedBox(height: 2),
             TextFormField(
               controller: _urlCtrl,
