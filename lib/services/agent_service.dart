@@ -680,6 +680,12 @@ Future<String> fetchEmailAI({
   required String prompt,
   required AppConfig config,
   required LLMProvider provider,
+  String? model,
 }) async {
-  return provider.complete(config: config, prompt: prompt, maxTokens: 2048);
+  return provider.complete(
+    config: config,
+    prompt: prompt,
+    maxTokens: 2048,
+    model: model,
+  );
 }

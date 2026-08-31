@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/calendar_model.dart';
+import '../models/config.dart';
 import '../models/message.dart';
 import '../llm/provider.dart';
 import '../services/gcal_service.dart';
@@ -150,7 +151,12 @@ Return ONLY a raw JSON array (no markdown fences), each item has:
   "event": (optional, only for type "add") object with "title", "start" (ISO8601), "end" (ISO8601)
 ''';
 
-      final raw = await provider.complete(config: config, prompt: prompt, maxTokens: 1024);
+      final raw = await provider.complete(
+        config: config,
+        prompt: prompt,
+        maxTokens: 1024,
+        model: config.modelFor(Feature.calendar),
+      );
       final cleaned = raw
           .replaceAll(RegExp(r'```json\s*'), '')
           .replaceAll(RegExp(r'```\s*'), '')
@@ -204,7 +210,7 @@ Return ONLY a raw JSON array (no markdown fences), each item has:
           Message(role: MessageRole.system, content: systemPrompt),
           ...history,
         ],
-        model: config.active.selectedModel,
+        model: config.modelFor(Feature.calendar),
         apiKey: config.active.apiKey,
         baseUrl: config.active.baseUrl,
         maxTokens: 1024,

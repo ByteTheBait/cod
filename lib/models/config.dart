@@ -1,3 +1,27 @@
+import 'package:flutter/material.dart';
+
+/// The distinct AI features in the app. Each can use a different model from
+/// the same active provider.
+enum Feature { chat, email, calendar, code, tasks }
+
+extension FeatureX on Feature {
+  String get label => switch (this) {
+        Feature.chat => 'Chat',
+        Feature.email => 'Email',
+        Feature.calendar => 'Calendar',
+        Feature.code => 'Code',
+        Feature.tasks => 'Tasks',
+      };
+
+  IconData get icon => switch (this) {
+        Feature.chat => Icons.chat_bubble_outline,
+        Feature.email => Icons.mail_outline,
+        Feature.calendar => Icons.calendar_month_outlined,
+        Feature.code => Icons.code_outlined,
+        Feature.tasks => Icons.checklist_outlined,
+      };
+}
+
 enum DaemonMode { manual, responsive, hourly, nightly }
 
 extension DaemonModeX on DaemonMode {
@@ -23,6 +47,9 @@ class ProviderConfig {
   final String baseUrl;
   final String selectedModel;
   final List<String> models;
+  /// Per-feature model overrides. Keys are [Feature] names. Falls back to
+  /// [selectedModel] when a feature has no override.
+  final Map<String, String> featureModels;
 
   const ProviderConfig({
     required this.id,
@@ -31,12 +58,18 @@ class ProviderConfig {
     this.baseUrl = '',
     required this.selectedModel,
     required this.models,
+    this.featureModels = const {},
   });
+
+  /// The model to use for a given feature.
+  String modelFor(Feature feature) =>
+      featureModels[feature.name] ?? selectedModel;
 
   ProviderConfig copyWith({
     String? apiKey,
     String? baseUrl,
     String? selectedModel,
+    Map<String, String>? featureModels,
   }) =>
       ProviderConfig(
         id: id,
@@ -45,6 +78,7 @@ class ProviderConfig {
         baseUrl: baseUrl ?? this.baseUrl,
         selectedModel: selectedModel ?? this.selectedModel,
         models: models,
+        featureModels: featureModels ?? this.featureModels,
       );
 }
 
@@ -66,6 +100,9 @@ class AppConfig {
 
   ProviderConfig get active =>
       providers[activeProviderId] ?? providers.values.first;
+
+  /// The model to use for a given feature, from the active provider.
+  String modelFor(Feature feature) => active.modelFor(feature);
 
   AppConfig copyWith({
     String? activeProviderId,

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import '../models/config.dart';
 import '../models/email_model.dart';
 import '../services/gmail_service.dart';
 import '../services/agent_service.dart';
 import '../state/email.dart';
 import '../state/providers.dart';
-import '../llm/provider.dart' show LLMProvider;
+import '../llm/provider.dart';
+import '../widgets/linkified_text.dart';
 
 class EmailScreen extends ConsumerWidget {
   const EmailScreen({super.key});
@@ -32,11 +34,33 @@ class EmailScreen extends ConsumerWidget {
           ],
         ],
       ),
+      floatingActionButton: emailState.status == EmailConnectionStatus.connected
+          ? FloatingActionButton(
+              onPressed: () => _showComposeSheet(context),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              tooltip: 'Compose',
+              child: const Icon(Icons.edit_outlined),
+            )
+          : null,
       body: switch (emailState.status) {
         EmailConnectionStatus.unknown => const Center(child: CircularProgressIndicator()),
         EmailConnectionStatus.disconnected => _SetupView(error: emailState.error),
         EmailConnectionStatus.connected => _InboxView(loading: emailState.loading),
       },
+    );
+  }
+
+  void _showComposeSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => const _ComposeSheet(),
     );
   }
 }
@@ -305,6 +329,7 @@ class _ThreadDetailScreenState extends ConsumerState<_ThreadDetailScreen> {
         prompt: 'Summarize this email thread concisely in 2-3 bullet points:\n\n$body',
         config: config,
         provider: provider,
+        model: config.modelFor(Feature.email),
       );
       ref.read(emailProvider.notifier).setAiSummary(widget.threadId, summary);
     } catch (e) {
@@ -334,6 +359,7 @@ class _ThreadDetailScreenState extends ConsumerState<_ThreadDetailScreen> {
             'From: ${last?.from ?? thread.from}\n\n$body',
         config: config,
         provider: provider,
+        model: config.modelFor(Feature.email),
       );
       ref.read(emailProvider.notifier).setAiDraft(widget.threadId, draft);
     } catch (e) {
@@ -577,7 +603,7 @@ class _MessageCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(
+          LinkifiedText(
             message.body.trim(),
             style: TextStyle(
                 fontSize: 13,
@@ -683,6 +709,183 @@ class _ReplySheetState extends ConsumerState<_ReplySheet> {
             maxLines: 8,
             minLines: 4,
             decoration: const InputDecoration(hintText: 'Your reply…'),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _sending ? null : _send,
+            icon: _sending
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child:
+                        CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary))
+                : const Icon(Icons.send),
+            label: Text(_sending ? 'Sending…' : 'Send'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Compose sheet ────────────────────────────────────────────────────────────
+
+class _ComposeSheet extends ConsumerStatefulWidget {
+  const _ComposeSheet();
+
+  @override
+  ConsumerState<_ComposeSheet> createState() => _ComposeSheetState();
+}
+
+class _ComposeSheetState extends ConsumerState<_ComposeSheet> {
+  final _toCtrl = TextEditingController();
+  final _subjectCtrl = TextEditingController();
+  final _bodyCtrl = TextEditingController();
+  bool _sending = false;
+  bool _aiDrafting = false;
+
+  @override
+  void dispose() {
+    _toCtrl.dispose();
+    _subjectCtrl.dispose();
+    _bodyCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _aiDraft() async {
+    final note = _bodyCtrl.text.trim();
+    final config = ref.read(configProvider);
+    if (config.active.apiKey.isEmpty && config.activeProviderId != 'ollama') {
+      _showError('Set an API key in Settings first.');
+      return;
+    }
+    if (_aiDrafting) return;
+    setState(() => _aiDrafting = true);
+
+    final registry = ref.read(llmRegistryProvider);
+    final provider = registry[config.activeProviderId] ?? registry.values.first;
+
+    final system = 'You are a professional email writer. '
+        'Draft a polished, concise email based on the user\'s notes or ideas. '
+        'Output only the email body — no subject line, no salutation, no signature. '
+        'Match the tone implied by the notes.';
+
+    try {
+      final draft = await provider.complete(
+        config: config,
+        system: system,
+        prompt: 'Draft an email based on these notes:\n\n$note',
+        maxTokens: 2048,
+        model: config.modelFor(Feature.email),
+      );
+      if (!mounted) return;
+      final trimmed = draft.trim();
+      final cleaned = trimmed
+          .replaceAll(RegExp(r'^```[\w-]*\s*'), '')
+          .replaceAll(RegExp(r'\s*```$'), '')
+          .replaceAll(RegExp(r'^Subject:\s*.*$\n?', multiLine: true), '')
+          .trim();
+      // Replace the notes with the drafted body.
+      setState(() {
+        _bodyCtrl.text = cleaned;
+        _bodyCtrl.selection = TextSelection.collapsed(offset: cleaned.length);
+      });
+    } catch (e) {
+      _showError('Draft failed: $e');
+    } finally {
+      if (mounted) setState(() => _aiDrafting = false);
+    }
+  }
+
+  void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Theme.of(context).colorScheme.error),
+    );
+  }
+
+  Future<void> _send() async {
+    final to = _toCtrl.text.trim();
+    final body = _bodyCtrl.text.trim();
+    if (to.isEmpty) return;
+    setState(() => _sending = true);
+    try {
+      final from = await GmailService.instance.userEmail;
+      await GmailService.instance.sendMessage(
+        from: from,
+        to: to,
+        subject: _subjectCtrl.text.trim(),
+        body: body,
+      );
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Email sent!')),
+        );
+      }
+    } catch (e) {
+      setState(() => _sending = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Send failed: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('New message',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _toCtrl,
+            keyboardType: TextInputType.emailAddress,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'To'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _subjectCtrl,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(hintText: 'Subject'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _bodyCtrl,
+            maxLines: 10,
+            minLines: 5,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+              hintText: 'Message',
+              suffixIcon: _aiDrafting
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : IconButton(
+                      icon: const Icon(Icons.auto_awesome),
+                      tooltip: 'AI draft',
+                      onPressed: _aiDraft,
+                    ),
+            ),
           ),
           const SizedBox(height: 12),
           FilledButton.icon(

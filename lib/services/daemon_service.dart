@@ -91,7 +91,7 @@ class DaemonService {
     await for (final event in service.run(
       initialPrompt: prompt,
       tools: skillDef.tools,
-      model: config.active.selectedModel,
+      model: config.modelFor(Feature.tasks),
       apiKey: config.active.apiKey,
       providerId: config.activeProviderId,
       baseUrl: config.active.baseUrl,

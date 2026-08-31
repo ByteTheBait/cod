@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+import '../models/config.dart';
 import '../models/task.dart';
 import '../models/tool.dart';
 import '../services/agent_service.dart';
@@ -141,7 +142,7 @@ class MinnowSync {
     await for (final event in service.run(
       initialPrompt: task.title,
       tools: AgentService.taskTools,
-      model: config.active.selectedModel,
+      model: config.modelFor(Feature.tasks),
       apiKey: config.active.apiKey,
       providerId: config.activeProviderId,
       baseUrl: config.active.baseUrl,

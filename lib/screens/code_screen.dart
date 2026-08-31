@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:highlight/highlight.dart' show highlight, Node;
+import '../models/config.dart';
 import '../models/tool.dart';
 import '../services/agent_service.dart';
 import '../services/sandbox_service.dart';
@@ -100,7 +101,7 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
     _agentSub = service.run(
       initialPrompt: text,
       tools: AgentService.codeTools,
-      model: config.active.selectedModel,
+      model: config.modelFor(Feature.code),
       apiKey: config.active.apiKey,
       providerId: config.activeProviderId,
       baseUrl: config.active.baseUrl,
@@ -169,11 +170,13 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
       appBar: AppBar(
         title: const Text('Code'),
         actions: [
+          if (codeState.workingDir.isNotEmpty)
+            _SessionMenu(state: codeState),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ProviderBadge(
               providerId: config.activeProviderId,
-              modelId: config.active.selectedModel,
+              modelId: config.modelFor(Feature.code),
             ),
           ),
           IconButton(
@@ -250,6 +253,91 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Session history menu ─────────────────────────────────────────────────────
+
+class _SessionMenu extends ConsumerWidget {
+  final CodeState state;
+  const _SessionMenu({required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final notifier = ref.read(codeProvider.notifier);
+
+    return PopupMenuButton<String>(
+      tooltip: 'Session history',
+      icon: Icon(Icons.history, size: 20, color: cs.onSurface.withOpacity(0.7)),
+      onSelected: (value) {
+        switch (value) {
+          case '__new__':
+            notifier.newSession();
+          case '__clear__':
+            notifier.clearConversation();
+          default:
+            notifier.switchSession(value);
+        }
+      },
+      itemBuilder: (ctx) => [
+        const PopupMenuItem(
+          value: '__new__',
+          child: Row(
+            children: [
+              Icon(Icons.add, size: 18),
+              SizedBox(width: 8),
+              Text('New session'),
+            ],
+          ),
+        ),
+        if (state.sessions.isNotEmpty) const PopupMenuDivider(),
+        ...state.sessions.map((s) {
+          final isActive = s.id == state.activeSessionId;
+          return PopupMenuItem(
+            value: s.id,
+            child: Row(
+              children: [
+                Icon(
+                  isActive ? Icons.radio_button_checked : Icons.radio_button_off,
+                  size: 16,
+                  color: isActive ? cs.primary : cs.onSurface.withOpacity(0.4),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    s.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ),
+                if (isActive)
+                  Text(' · ${s.entries.length}',
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurface.withOpacity(0.4))),
+              ],
+            ),
+          );
+        }),
+        if (state.sessions.isNotEmpty) ...[
+          const PopupMenuDivider(),
+          PopupMenuItem(
+            value: '__clear__',
+            child: Row(
+              children: [
+                Icon(Icons.delete_outline, size: 18, color: cs.error),
+                const SizedBox(width: 8),
+                Text('Clear current', style: TextStyle(color: cs.error)),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

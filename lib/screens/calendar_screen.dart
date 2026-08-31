@@ -6,6 +6,7 @@ import '../models/calendar_model.dart';
 import '../models/message.dart';
 import '../state/providers.dart';
 import '../widgets/provider_badge.dart';
+import '../widgets/linkified_text.dart';
 
 class CalendarScreen extends ConsumerWidget {
   const CalendarScreen({super.key});
@@ -454,13 +455,26 @@ class _EventTile extends ConsumerWidget {
                           size: 11, color: cs.onSurface.withOpacity(0.4)),
                       const SizedBox(width: 3),
                       Flexible(
-                        child: Text(event.location!,
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: cs.onSurface.withOpacity(0.45)),
-                            overflow: TextOverflow.ellipsis),
+                        child: LinkifiedText(
+                          event.location!,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurface.withOpacity(0.45)),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
+                  ),
+                ],
+                if (event.description != null &&
+                    event.description!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  LinkifiedText(
+                    event.description!,
+                    style: TextStyle(
+                        fontSize: 11, color: cs.onSurface.withOpacity(0.5)),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
                 if (event.attendees.isNotEmpty) ...[

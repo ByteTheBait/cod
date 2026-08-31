@@ -19,6 +19,8 @@ class ConfigNotifier extends Notifier<AppConfig> {
   static String _prefKey(String provider) => 'key_$provider';
   static String _prefModel(String provider) => 'model_$provider';
   static String _prefBaseUrl(String provider) => 'base_$provider';
+  static String _prefFeatureModel(String provider, Feature feature) =>
+      'feature_model_${provider}_${feature.name}';
 
   // One-shot migration: copy settings from the old sandboxed plist (used by
   // versions before v1.4.0 which ran with App Sandbox enabled).
@@ -59,7 +61,17 @@ class ConfigNotifier extends Notifier<AppConfig> {
       final key = prefs.getString(_prefKey(id)) ?? '';
       final model = prefs.getString(_prefModel(id)) ?? providers[id]!.selectedModel;
       final base = prefs.getString(_prefBaseUrl(id)) ?? providers[id]!.baseUrl;
-      providers[id] = providers[id]!.copyWith(apiKey: key, selectedModel: model, baseUrl: base);
+      final featureModels = <String, String>{};
+      for (final f in Feature.values) {
+        final fm = prefs.getString(_prefFeatureModel(id, f));
+        if (fm != null && fm.isNotEmpty) featureModels[f.name] = fm;
+      }
+      providers[id] = providers[id]!.copyWith(
+        apiKey: key,
+        selectedModel: model,
+        baseUrl: base,
+        featureModels: featureModels,
+      );
     }
     state = AppConfig(
       activeProviderId: activeId,
@@ -99,6 +111,28 @@ class ConfigNotifier extends Notifier<AppConfig> {
     state = state.copyWith(providers: providers);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefBaseUrl(providerId), url);
+  }
+
+  /// Set the model used by a specific feature for a provider. An empty
+  /// [model] clears the override and falls back to the provider's default.
+  Future<void> setFeatureModel(
+      String providerId, Feature feature, String model) async {
+    final providers = Map<String, ProviderConfig>.from(state.providers);
+    final p = providers[providerId]!;
+    final featureModels = Map<String, String>.from(p.featureModels);
+    if (model.isEmpty) {
+      featureModels.remove(feature.name);
+    } else {
+      featureModels[feature.name] = model;
+    }
+    providers[providerId] = p.copyWith(featureModels: featureModels);
+    state = state.copyWith(providers: providers);
+    final prefs = await SharedPreferences.getInstance();
+    if (model.isEmpty) {
+      await prefs.remove(_prefFeatureModel(providerId, feature));
+    } else {
+      await prefs.setString(_prefFeatureModel(providerId, feature), model);
+    }
   }
 
   Future<void> setDaemonMode(DaemonMode mode) async {

@@ -110,4 +110,19 @@ class SessionsNotifier extends Notifier<SessionsState> {
     final newActive = state.activeId == id ? null : state.activeId;
     state = SessionsState(sessions: sessions, activeId: newActive);
   }
+
+  /// Delete all chat sessions and clear the active selection.
+  Future<void> resetAll() async {
+    final dir = await _dir;
+    if (await dir.exists()) {
+      await for (final e in dir.list()) {
+        if (e is File && e.path.endsWith('.json')) {
+          try {
+            await e.delete();
+          } catch (_) {}
+        }
+      }
+    }
+    state = const SessionsState();
+  }
 }

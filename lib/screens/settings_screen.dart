@@ -35,6 +35,10 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           _ProviderCard(providerId: config.activeProviderId),
           const SizedBox(height: 24),
+          _SectionHeader('Feature models'),
+          const SizedBox(height: 8),
+          _FeatureModelsCard(providerId: config.activeProviderId),
+          const SizedBox(height: 24),
           _SectionHeader('Daemon'),
           const SizedBox(height: 8),
           const _DaemonCard(),
@@ -267,6 +271,85 @@ class _KeyStatusDot extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Feature models card ───────────────────────────────────────────────────────
+
+class _FeatureModelsCard extends ConsumerWidget {
+  final String providerId;
+  const _FeatureModelsCard({required this.providerId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final config = ref.watch(configProvider);
+    final p = config.providers[providerId]!;
+    final cs = Theme.of(context).colorScheme;
+    final notifier = ref.read(configProvider.notifier);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Choose a model for each feature. All use ${p.name} — '
+            'the same API key.',
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.45)),
+          ),
+          const SizedBox(height: 12),
+          ...Feature.values.map((f) {
+            final current = p.modelFor(f);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  Icon(f.icon, size: 16, color: cs.primary.withOpacity(0.7)),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 90,
+                    child: Text(
+                      f.label,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: current,
+                      isDense: true,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      ),
+                      items: p.models
+                          .map((m) => DropdownMenuItem(
+                                value: m,
+                                child: Text(m,
+                                    style: const TextStyle(fontSize: 12),
+                                    overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: (m) {
+                        if (m != null) {
+                          notifier.setFeatureModel(providerId, f, m);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

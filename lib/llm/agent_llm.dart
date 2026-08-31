@@ -26,6 +26,10 @@ class AgentLLM {
           url: '${(baseUrl?.isNotEmpty == true ? baseUrl : 'http://localhost:11434')}/v1/chat/completions',
           messages: messages, tools: tools, model: model, apiKey: '',
           system: system, maxTokens: maxTokens),
+      'custom' => _callOpenAI(
+          url: '${(baseUrl?.isNotEmpty == true ? baseUrl : 'https://api.openai.com/v1')}/chat/completions',
+          messages: messages, tools: tools, model: model, apiKey: apiKey,
+          system: system, maxTokens: maxTokens),
       _ => _callClaude(
           messages: messages, tools: tools, model: model, apiKey: apiKey,
           baseUrl: baseUrl, system: system, maxTokens: maxTokens),

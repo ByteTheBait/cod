@@ -335,11 +335,36 @@ class GmailService {
     String? references,
   }) async {
     final subjectLine = subject.startsWith('Re:') ? subject : 'Re: $subject';
+    await sendMessage(
+      from: from,
+      to: to,
+      subject: subjectLine,
+      body: body,
+      inReplyTo: inReplyTo,
+      references: references,
+    );
+  }
+
+  /// Send a brand-new email (compose). `inReplyTo`/`references` are only
+  /// used when composing a reply via [sendReply].
+  Future<void> sendMessage({
+    required String from,
+    required String to,
+    required String subject,
+    required String body,
+    String? inReplyTo,
+    String? references,
+    List<String>? bcc,
+    List<String>? cc,
+  }) async {
     final mime = StringBuffer()
       ..writeln('MIME-Version: 1.0')
       ..writeln('From: $from')
-      ..writeln('To: $to')
-      ..writeln('Subject: $subjectLine')
+      ..writeln('To: $to');
+    if (cc != null && cc.isNotEmpty) mime.writeln('Cc: ${cc.join(', ')}');
+    if (bcc != null && bcc.isNotEmpty) mime.writeln('Bcc: ${bcc.join(', ')}');
+    mime
+      ..writeln('Subject: $subject')
       ..writeln('Content-Type: text/plain; charset=utf-8')
       ..writeln('Content-Transfer-Encoding: quoted-printable');
     if (inReplyTo != null) mime.writeln('In-Reply-To: $inReplyTo');

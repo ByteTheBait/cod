@@ -52,7 +52,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (sessionId == null) {
       final s = await sessions.create(
         providerId: config.activeProviderId,
-        modelId: config.active.selectedModel,
+        modelId: config.modelFor(Feature.chat),
       );
       sessionId = s.id;
     }
@@ -77,7 +77,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       await for (final chunk in llm.stream(
         messages: history,
-        model: config.active.selectedModel,
+        model: config.modelFor(Feature.chat),
         apiKey: config.active.apiKey,
         baseUrl: config.active.baseUrl.isNotEmpty ? config.active.baseUrl : null,
       )) {
@@ -260,6 +260,30 @@ class _SessionsDrawer extends ConsumerWidget {
 
   const _SessionsDrawer({required this.onNewChat});
 
+  Future<void> _confirmReset(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset all sessions?'),
+        content: const Text(
+            'This deletes all chat history. This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(sessionsProvider.notifier).resetAll();
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sessState = ref.watch(sessionsProvider);
@@ -281,6 +305,14 @@ class _SessionsDrawer extends ConsumerWidget {
                         ),
                   ),
                   const Spacer(),
+                  if (sessState.sessions.isNotEmpty)
+                    IconButton(
+                      icon: Icon(Icons.delete_sweep_outlined,
+                          size: 18, color: cs.onSurface.withOpacity(0.5)),
+                      tooltip: 'Reset all sessions',
+                      onPressed: () => _confirmReset(context, ref),
+                    ),
+                  const SizedBox(width: 4),
                   IconButton.filled(
                     onPressed: onNewChat,
                     icon: const Icon(Icons.add, size: 18),

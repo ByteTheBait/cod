@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/config.dart';
 import '../models/task.dart';
 import '../models/tool.dart';
 import '../services/agent_service.dart';
@@ -118,7 +119,7 @@ class CompanionServer {
     await for (final event in service.run(
       initialPrompt: task.title,
       tools: AgentService.taskTools,
-      model: config.active.selectedModel,
+      model: config.modelFor(Feature.tasks),
       apiKey: config.active.apiKey,
       providerId: config.activeProviderId,
       baseUrl: config.active.baseUrl,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/config.dart';
 import '../models/message.dart';
 import '../models/task.dart';
 import '../models/tool.dart';
@@ -80,7 +81,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     await for (final event in service.run(
       initialPrompt: prompt,
       tools: skillDef.tools,
-      model: config.active.selectedModel,
+      model: config.modelFor(Feature.tasks),
       apiKey: config.active.apiKey,
       providerId: config.activeProviderId,
       baseUrl: config.active.baseUrl,
@@ -157,7 +158,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     try {
       await for (final chunk in llm.stream(
         messages: history,
-        model: config.active.selectedModel,
+        model: config.modelFor(Feature.tasks),
         apiKey: config.active.apiKey,
         baseUrl: config.active.baseUrl.isNotEmpty ? config.active.baseUrl : null,
       )) {

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 import '../services/sandbox_service.dart';
 
 export '../services/sandbox_service.dart' show SandboxType, ContainerStatus;
@@ -63,6 +64,46 @@ class CodeFile {
   const CodeFile({required this.path, required this.name, required this.content});
 }
 
+// ── Code session (a saved agent conversation for a working dir) ───────────────
+
+class CodeSession {
+  final String id;
+  final String title;
+  final DateTime updatedAt;
+  final List<CodeEntry> entries;
+  final List<Map<String, dynamic>> history;
+
+  const CodeSession({
+    required this.id,
+    required this.title,
+    required this.updatedAt,
+    required this.entries,
+    required this.history,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'updatedAt': updatedAt.toIso8601String(),
+        'entries': entries.map((e) => e.toJson()).toList(),
+        'history': history,
+      };
+
+  factory CodeSession.fromJson(Map<String, dynamic> j) => CodeSession(
+        id: j['id'] as String,
+        title: j['title'] as String? ?? 'Session',
+        updatedAt: DateTime.tryParse(j['updatedAt'] as String? ?? '') ??
+            DateTime.now(),
+        entries: (j['entries'] as List? ?? [])
+            .map((e) => CodeEntry.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        history: (j['history'] as List?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            [],
+      );
+}
+
 // Sentinel so copyWith can distinguish "set to null" from "leave unchanged"
 const _unset = Object();
 
@@ -82,6 +123,9 @@ class CodeState {
   // File tabs — null activeFileIndex = Agent tab
   final List<CodeFile> openFiles;
   final int? activeFileIndex;
+  // Session history for the current working dir
+  final List<CodeSession> sessions;
+  final String? activeSessionId;
 
   const CodeState({
     this.workingDir = '',
@@ -95,6 +139,8 @@ class CodeState {
     this.sandboxError,
     this.openFiles = const [],
     this.activeFileIndex,
+    this.sessions = const [],
+    this.activeSessionId,
   });
 
   CodeState copyWith({
@@ -110,6 +156,8 @@ class CodeState {
     bool clearSandboxError = false,
     List<CodeFile>? openFiles,
     Object? activeFileIndex = _unset,
+    List<CodeSession>? sessions,
+    Object? activeSessionId = _unset,
   }) =>
       CodeState(
         workingDir: workingDir ?? this.workingDir,
@@ -125,6 +173,10 @@ class CodeState {
         activeFileIndex: identical(activeFileIndex, _unset)
             ? this.activeFileIndex
             : activeFileIndex as int?,
+        sessions: sessions ?? this.sessions,
+        activeSessionId: identical(activeSessionId, _unset)
+            ? this.activeSessionId
+            : activeSessionId as String?,
       );
 }
 
@@ -228,11 +280,19 @@ class CodeNotifier extends Notifier<CodeState> {
     final dir = state.workingDir;
     if (dir.isEmpty) return;
     try {
+      // Update the active session with the current entries/history.
+      final sessions = state.sessions.map((s) {
+        if (s.id != state.activeSessionId) return s;
+        return CodeSession(
+          id: s.id,
+          title: s.title,
+          updatedAt: DateTime.now(),
+          entries: state.entries,
+          history: state.history,
+        );
+      }).toList();
       final f = await _sessionFile(dir);
-      await f.writeAsString(jsonEncode({
-        'entries': state.entries.map((e) => e.toJson()).toList(),
-        'history': state.history,
-      }));
+      await f.writeAsString(jsonEncode(sessions.map((s) => s.toJson()).toList()));
     } catch (_) {}
   }
 
@@ -242,11 +302,21 @@ class CodeNotifier extends Notifier<CodeState> {
       if (!await f.exists()) return;
       final raw = jsonDecode(await f.readAsString());
       if (raw is List) {
-        // Legacy format — entries only
-        final entries =
-            raw.map((e) => CodeEntry.fromJson(e as Map<String, dynamic>)).toList();
-        state = state.copyWith(entries: entries);
+        // New format — list of CodeSession objects.
+        final sessions = raw
+            .map((e) => CodeSession.fromJson(e as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        if (sessions.isEmpty) return;
+        final active = sessions.first;
+        state = state.copyWith(
+          sessions: sessions,
+          activeSessionId: active.id,
+          entries: active.entries,
+          history: active.history,
+        );
       } else if (raw is Map) {
+        // Legacy format — a single session object.
         final entries = (raw['entries'] as List)
             .map((e) => CodeEntry.fromJson(e as Map<String, dynamic>))
             .toList();
@@ -254,9 +324,79 @@ class CodeNotifier extends Notifier<CodeState> {
                 ?.map((e) => Map<String, dynamic>.from(e as Map))
                 .toList() ??
             [];
-        state = state.copyWith(entries: entries, history: history);
+        final session = CodeSession(
+          id: 'legacy',
+          title: 'Session',
+          updatedAt: DateTime.now(),
+          entries: entries,
+          history: history,
+        );
+        state = state.copyWith(
+          sessions: [session],
+          activeSessionId: session.id,
+          entries: entries,
+          history: history,
+        );
       }
     } catch (_) {}
+  }
+
+  // ── Session management ─────────────────────────────────────────────────────
+
+  /// Start a fresh session for the current working dir, saving the current one.
+  Future<void> newSession() async {
+    if (state.workingDir.isEmpty) return;
+    await _save();
+    final session = CodeSession(
+      id: const Uuid().v4(),
+      title: 'Session ${state.sessions.length + 1}',
+      updatedAt: DateTime.now(),
+      entries: const [],
+      history: const [],
+    );
+    state = state.copyWith(
+      sessions: [session, ...state.sessions],
+      activeSessionId: session.id,
+      entries: const [],
+      history: const [],
+      openFiles: const [],
+      activeFileIndex: null,
+    );
+    await _save();
+  }
+
+  /// Switch to an existing session for the current working dir.
+  Future<void> switchSession(String id) async {
+    final session = state.sessions.where((s) => s.id == id).firstOrNull;
+    if (session == null) return;
+    await _save();
+    state = state.copyWith(
+      activeSessionId: session.id,
+      entries: session.entries,
+      history: session.history,
+      openFiles: const [],
+      activeFileIndex: null,
+    );
+  }
+
+  /// Delete a session (and its persisted file entry).
+  Future<void> deleteSession(String id) async {
+    final sessions = state.sessions.where((s) => s.id != id).toList();
+    final wasActive = state.activeSessionId == id;
+    final nextActive = wasActive
+        ? (sessions.isNotEmpty ? sessions.first.id : null)
+        : state.activeSessionId;
+    state = state.copyWith(
+      sessions: sessions,
+      activeSessionId: nextActive,
+      entries: wasActive
+          ? (sessions.isNotEmpty ? sessions.first.entries : const [])
+          : state.entries,
+      history: wasActive
+          ? (sessions.isNotEmpty ? sessions.first.history : const [])
+          : state.history,
+    );
+    await _save();
   }
 
   // ── Agent conversation ─────────────────────────────────────────────────────
@@ -305,12 +445,7 @@ class CodeNotifier extends Notifier<CodeState> {
 
   Future<void> clearConversation() async {
     state = state.copyWith(entries: [], history: []);
-    if (state.workingDir.isNotEmpty) {
-      try {
-        final f = await _sessionFile(state.workingDir);
-        if (await f.exists()) await f.delete();
-      } catch (_) {}
-    }
+    await _save();
   }
 
   Future<void> setWorkingDir(String dir) => _setWorkingDir(dir);
@@ -323,6 +458,8 @@ class CodeNotifier extends Notifier<CodeState> {
       history: [],
       openFiles: [],
       activeFileIndex: null,
+      sessions: const [],
+      activeSessionId: null,
       clearSandboxError: true,
       containerStatus: ContainerStatus.idle,
     );

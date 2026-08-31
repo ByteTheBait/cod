@@ -20,6 +20,7 @@ extension LLMProviderX on LLMProvider {
     String? system,
     required String prompt,
     int maxTokens = 4096,
+    String? model,
   }) async {
     final msgs = [
       if (system != null)
@@ -29,7 +30,7 @@ extension LLMProviderX on LLMProvider {
     final buf = StringBuffer();
     await for (final chunk in stream(
       messages: msgs,
-      model: config.active.selectedModel,
+      model: model ?? config.active.selectedModel,
       apiKey: config.active.apiKey,
       baseUrl: config.active.baseUrl,
       maxTokens: maxTokens,
