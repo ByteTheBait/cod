@@ -6,6 +6,7 @@ import '../models/task.dart';
 import '../models/tool.dart';
 import '../services/agent_service.dart';
 import '../state/providers.dart';
+import '../widgets/ai_input_field.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/provider_badge.dart';
 
@@ -352,14 +353,11 @@ class _InputBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: TextField(
+            child: AiInputField(
               controller: ctrl,
-              maxLines: 4,
-              minLines: 1,
-              decoration: const InputDecoration(
-                hintText: 'Ask the AI about this task...',
-                hintStyle: TextStyle(color: Colors.white24),
-              ),
+              hintText: 'Ask the AI about this task...',
+              hintStyle: const TextStyle(color: Colors.white24),
+              onSend: onSend,
             ),
           ),
           const SizedBox(width: 8),

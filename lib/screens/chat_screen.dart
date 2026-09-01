@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/config.dart';
 import '../models/message.dart';
 import '../state/providers.dart';
+import '../widgets/ai_input_field.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/provider_badge.dart';
 
@@ -176,16 +177,11 @@ class _InputBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: TextField(
+            child: AiInputField(
               controller: ctrl,
-              maxLines: 5,
-              minLines: 1,
-              textInputAction: TextInputAction.newline,
-              decoration: const InputDecoration(
-                hintText: 'Message...',
-                hintStyle: TextStyle(color: Colors.white24),
-              ),
-              onSubmitted: (_) => onSend(),
+              hintText: 'Message...',
+              hintStyle: const TextStyle(color: Colors.white24),
+              onSend: onSend,
             ),
           ),
           const SizedBox(width: 8),

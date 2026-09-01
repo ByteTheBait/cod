@@ -5,6 +5,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../models/calendar_model.dart';
 import '../models/message.dart';
 import '../state/providers.dart';
+import '../widgets/ai_input_field.dart';
 import '../widgets/provider_badge.dart';
 import '../widgets/linkified_text.dart';
 
@@ -637,19 +638,15 @@ class _ChatPanelState extends ConsumerState<_ChatPanel> {
               child: Row(
                 children: [
                   Expanded(
-                    child: TextField(
+                    child: AiInputField(
                       controller: _ctrl,
-                      maxLines: 3,
-                      minLines: 1,
-                      onSubmitted: (_) => _send(),
-                      decoration: const InputDecoration(
-                        hintText: 'Ask about your schedule…',
-                        hintStyle: TextStyle(
-                            color: Colors.white24, fontSize: 12),
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        isDense: true,
-                      ),
+                      hintText: 'Ask about your schedule…',
+                      hintStyle: const TextStyle(
+                          color: Colors.white24, fontSize: 12),
+                      onSend: _send,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      isDense: true,
                       style: const TextStyle(fontSize: 13),
                     ),
                   ),
