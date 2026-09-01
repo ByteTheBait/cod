@@ -96,6 +96,7 @@ class DaemonService {
       providerId: config.activeProviderId,
       baseUrl: config.active.baseUrl,
       system: skillDef.system,
+      maxIterations: config.agentMaxIterations,
     )) {
       if (event is AgentToolDone && event.toolName == 'mark_complete') {
         await _onComplete!(task.id, TaskStatus.done);

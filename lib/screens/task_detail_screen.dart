@@ -86,6 +86,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       providerId: config.activeProviderId,
       baseUrl: config.active.baseUrl,
       system: skillDef.system,
+      maxIterations: config.agentMaxIterations,
     )) {
       switch (event) {
         case AgentText(:final text):

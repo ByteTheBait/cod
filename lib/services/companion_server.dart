@@ -124,6 +124,7 @@ class CompanionServer {
       providerId: config.activeProviderId,
       baseUrl: config.active.baseUrl,
       system: system,
+      maxIterations: config.agentMaxIterations,
     )) {
       broadcastAgentEvent(taskId, event);
       if (event is AgentComplete) {

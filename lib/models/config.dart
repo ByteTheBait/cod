@@ -89,6 +89,10 @@ class AppConfig {
   final String nightlyTime;
   // 0 = never expire
   final int taskTtlDays;
+  /// Max tool-use iterations the agent loop runs before giving up.
+  final int agentMaxIterations;
+  /// Max iterations the daemon runs per task before stopping.
+  final int daemonMaxIterations;
 
   const AppConfig({
     required this.activeProviderId,
@@ -96,6 +100,8 @@ class AppConfig {
     this.daemonMode = DaemonMode.manual,
     this.nightlyTime = '23:00',
     this.taskTtlDays = 2,
+    this.agentMaxIterations = 20,
+    this.daemonMaxIterations = 5,
   });
 
   ProviderConfig get active =>
@@ -110,6 +116,8 @@ class AppConfig {
     DaemonMode? daemonMode,
     String? nightlyTime,
     int? taskTtlDays,
+    int? agentMaxIterations,
+    int? daemonMaxIterations,
   }) =>
       AppConfig(
         activeProviderId: activeProviderId ?? this.activeProviderId,
@@ -117,6 +125,8 @@ class AppConfig {
         daemonMode: daemonMode ?? this.daemonMode,
         nightlyTime: nightlyTime ?? this.nightlyTime,
         taskTtlDays: taskTtlDays ?? this.taskTtlDays,
+        agentMaxIterations: agentMaxIterations ?? this.agentMaxIterations,
+        daemonMaxIterations: daemonMaxIterations ?? this.daemonMaxIterations,
       );
 
   static AppConfig get defaults => AppConfig(

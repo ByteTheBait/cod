@@ -108,6 +108,7 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
       system: system,
       workingDir: workingDir.isNotEmpty ? workingDir : null,
       history: history,
+      maxIterations: config.agentMaxIterations,
       onMessagesUpdate: (msgs) =>
           ref.read(codeProvider.notifier).updateHistory(msgs),
       commandRunner: ref.read(codeProvider.notifier).commandRunner,

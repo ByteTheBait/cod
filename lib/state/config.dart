@@ -16,6 +16,8 @@ class ConfigNotifier extends Notifier<AppConfig> {
   static const _prefDaemonMode = 'daemon_mode';
   static const _prefNightlyTime = 'nightly_time';
   static const _prefTaskTtlDays = 'task_ttl_days';
+  static const _prefAgentMaxIterations = 'agent_max_iterations';
+  static const _prefDaemonMaxIterations = 'daemon_max_iterations';
   static String _prefKey(String provider) => 'key_$provider';
   static String _prefModel(String provider) => 'model_$provider';
   static String _prefBaseUrl(String provider) => 'base_$provider';
@@ -56,6 +58,8 @@ class ConfigNotifier extends Notifier<AppConfig> {
     );
     final nightlyTime = prefs.getString(_prefNightlyTime) ?? '23:00';
     final taskTtlDays = prefs.getInt(_prefTaskTtlDays) ?? 2;
+    final agentMaxIterations = prefs.getInt(_prefAgentMaxIterations) ?? 20;
+    final daemonMaxIterations = prefs.getInt(_prefDaemonMaxIterations) ?? 5;
     final providers = Map<String, ProviderConfig>.from(state.providers);
     for (final id in providers.keys) {
       final key = prefs.getString(_prefKey(id)) ?? '';
@@ -79,6 +83,8 @@ class ConfigNotifier extends Notifier<AppConfig> {
       daemonMode: daemonMode,
       nightlyTime: nightlyTime,
       taskTtlDays: taskTtlDays,
+      agentMaxIterations: agentMaxIterations,
+      daemonMaxIterations: daemonMaxIterations,
     );
     DaemonService.instance.apply(daemonMode, nightlyTime);
   }
@@ -155,5 +161,17 @@ class ConfigNotifier extends Notifier<AppConfig> {
     state = state.copyWith(taskTtlDays: days);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_prefTaskTtlDays, days);
+  }
+
+  Future<void> setAgentMaxIterations(int value) async {
+    state = state.copyWith(agentMaxIterations: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefAgentMaxIterations, value);
+  }
+
+  Future<void> setDaemonMaxIterations(int value) async {
+    state = state.copyWith(daemonMaxIterations: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefDaemonMaxIterations, value);
   }
 }

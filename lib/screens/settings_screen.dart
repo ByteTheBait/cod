@@ -286,7 +286,6 @@ class _FeatureModelsCard extends ConsumerWidget {
     final config = ref.watch(configProvider);
     final p = config.providers[providerId]!;
     final cs = Theme.of(context).colorScheme;
-    final notifier = ref.read(configProvider.notifier);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -299,55 +298,100 @@ class _FeatureModelsCard extends ConsumerWidget {
         children: [
           Text(
             'Choose a model for each feature. All use ${p.name} — '
-            'the same API key.',
+            'the same API key. A custom model still uses the provider\'s '
+            'API endpoint.',
             style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.45)),
           ),
           const SizedBox(height: 12),
           ...Feature.values.map((f) {
-            final current = p.modelFor(f);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Icon(f.icon, size: 16, color: cs.primary.withOpacity(0.7)),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 90,
-                    child: Text(
-                      f.label,
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: current,
-                      isDense: true,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      ),
-                      items: p.models
-                          .map((m) => DropdownMenuItem(
-                                value: m,
-                                child: Text(m,
-                                    style: const TextStyle(fontSize: 12),
-                                    overflow: TextOverflow.ellipsis),
-                              ))
-                          .toList(),
-                      onChanged: (m) {
-                        if (m != null) {
-                          notifier.setFeatureModel(providerId, f, m);
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
+            return _FeatureModelInput(
+              key: ValueKey('feature_${providerId}_${f.name}'),
+              providerId: providerId,
+              feature: f,
             );
           }),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeatureModelInput extends ConsumerStatefulWidget {
+  final String providerId;
+  final Feature feature;
+  const _FeatureModelInput({
+    super.key,
+    required this.providerId,
+    required this.feature,
+  });
+
+  @override
+  ConsumerState<_FeatureModelInput> createState() =>
+      _FeatureModelInputState();
+}
+
+class _FeatureModelInputState extends ConsumerState<_FeatureModelInput> {
+  late TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: _currentModel());
+  }
+
+  @override
+  void didUpdateWidget(covariant _FeatureModelInput old) {
+    super.didUpdateWidget(old);
+    if (old.providerId != widget.providerId ||
+        old.feature != widget.feature) {
+      _ctrl.text = _currentModel();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  String _currentModel() {
+    final config = ref.read(configProvider);
+    return config.providers[widget.providerId]!.modelFor(widget.feature);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(widget.feature.icon, size: 16, color: cs.primary.withOpacity(0.7)),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 90,
+            child: Text(
+              widget.feature.label,
+              style:
+                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _ctrl,
+              style: const TextStyle(fontSize: 13),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Model ID',
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              ),
+              onChanged: (v) => ref
+                  .read(configProvider.notifier)
+                  .setFeatureModel(widget.providerId, widget.feature, v.trim()),
+            ),
+          ),
         ],
       ),
     );
@@ -526,6 +570,34 @@ class _DaemonCardState extends ConsumerState<_DaemonCard> {
             'Tasks untouched by you or the agent are deleted automatically.',
             style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.4)),
           ),
+          const SizedBox(height: 18),
+          const Divider(height: 1),
+          const SizedBox(height: 14),
+          _IterationCapSelector(
+            label: 'Agent loop cap',
+            value: config.agentMaxIterations,
+            min: 1,
+            max: 100,
+            onChanged: (v) => notifier.setAgentMaxIterations(v),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Max tool-use rounds the agent runs before giving up.',
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.4)),
+          ),
+          const SizedBox(height: 14),
+          _IterationCapSelector(
+            label: 'Daemon run cap',
+            value: config.daemonMaxIterations,
+            min: 1,
+            max: 50,
+            onChanged: (v) => notifier.setDaemonMaxIterations(v),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Max times the auto-run daemon re-runs each pending task.',
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.4)),
+          ),
         ],
       ),
     );
@@ -583,6 +655,90 @@ class _TtlSelector extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+// ── Iteration cap selector ────────────────────────────────────────────────────
+
+class _IterationCapSelector extends StatelessWidget {
+  final String label;
+  final int value;
+  final int min;
+  final int max;
+  final void Function(int) onChanged;
+
+  const _IterationCapSelector({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(label,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        ),
+        _CapButton(
+          icon: Icons.remove,
+          onTap: value > min ? () => onChanged(value - 1) : null,
+        ),
+        SizedBox(
+          width: 40,
+          child: Text(
+            '$value',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: cs.primary,
+            ),
+          ),
+        ),
+        _CapButton(
+          icon: Icons.add,
+          onTap: value < max ? () => onChanged(value + 1) : null,
+        ),
+      ],
+    );
+  }
+}
+
+class _CapButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  const _CapButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 30,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: onTap == null
+              ? cs.surfaceContainerHigh.withOpacity(0.5)
+              : cs.primary.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: onTap == null ? Colors.transparent : cs.primary.withOpacity(0.4),
+          ),
+        ),
+        child: Icon(icon,
+            size: 16,
+            color: onTap == null
+                ? cs.onSurface.withOpacity(0.25)
+                : cs.primary),
+      ),
     );
   }
 }

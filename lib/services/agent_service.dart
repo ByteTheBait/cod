@@ -8,7 +8,6 @@ import '../models/task.dart';
 import '../models/tool.dart';
 import 'package:http/http.dart' as http;
 
-const int _maxIterations = 20;
 const int _maxFileBytes = 32768;
 
 final _blockedCommands = RegExp(
@@ -35,6 +34,7 @@ class TaskDaemon {
     String? system,
     String? workingDir,
     Duration interval = const Duration(seconds: 10),
+    int maxIterations = 5,
   }) async* {
     if (_running) {
       throw StateError('Daemon is already running');
@@ -57,7 +57,7 @@ class TaskDaemon {
     );
 
     // Continue with periodic execution
-    for (int i = 1; i <= 5; i++) {
+    for (int i = 1; i <= maxIterations; i++) {
       await Future.delayed(interval);
       if (!_running) break;
       
@@ -328,6 +328,7 @@ class AgentService {
     void Function(List<Map<String, dynamic>>)? onMessagesUpdate,
     Future<String> Function(String command)? commandRunner,
     Stream<String> Function(String command)? commandStreamRunner,
+    int maxIterations = 20,
   }) async* {
     final llm = AgentLLM();
     final messages = <Map<String, dynamic>>[
@@ -335,7 +336,7 @@ class AgentService {
       {'role': 'user', 'content': initialPrompt},
     ];
 
-    for (int i = 0; i < _maxIterations; i++) {
+    for (int i = 0; i < maxIterations; i++) {
       AgentLLMResponse response;
       try {
         response = await llm.call(
