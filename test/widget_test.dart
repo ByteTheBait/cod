@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('placeholder', (tester) async {
+  test('placeholder smoke test', () {
     expect(1 + 1, 2);
   });
 }
