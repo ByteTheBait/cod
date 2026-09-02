@@ -6,6 +6,7 @@ import '../llm/provider.dart';
 import '../models/config.dart';
 import '../models/task.dart';
 import '../models/tool.dart';
+import 'background_service.dart';
 import 'package:http/http.dart' as http;
 
 const int _maxFileBytes = 32768;
@@ -143,6 +144,8 @@ class SkillDef {
           'Use tools to complete the task. Be methodical and thorough. '
           'Always read a file with read_file before modifying it. '
           'When editing existing files use str_replace_file. Only use write_file for new files. '
+          'For several related edits across files, use multi_edit in a single call. '
+          'Use background_start for long-running commands and poll with background_status. '
           'When done, call mark_complete with a summary.',
     ),
     TaskSkill.research: SkillDef(
@@ -158,6 +161,8 @@ class SkillDef {
       system: 'You are an expert software engineer. '
           'Read relevant files before making changes. '
           'Use str_replace_file for targeted edits, write_file only for new files. '
+          'For several related edits across files, use multi_edit in a single call. '
+          'Use background_start for long-running commands (servers, watchers, builds) and poll with background_status. '
           'Run commands to test your changes where appropriate. '
           'Be precise — make minimal, correct changes. '
           'When done, call mark_complete with a summary of the changes made.',
@@ -168,6 +173,7 @@ class SkillDef {
           'Read existing content before editing. '
           'Write clearly, concisely, and in the appropriate tone for the context. '
           'Prefer str_replace_file for editing existing documents. '
+          'For several related edits across files, use multi_edit in a single call. '
           'When done, call mark_complete with a brief description of what was written or changed.',
     ),
   };
@@ -199,6 +205,32 @@ class AgentService {
           'new_string': {'type': 'string', 'description': 'Text to replace it with.'},
         },
         'required': ['path', 'old_string', 'new_string'],
+      },
+    ),
+    Tool(
+      name: 'multi_edit',
+      description: 'Apply multiple targeted string replacements across one or more files in a single call. '
+          'Each edit replaces the first occurrence of old_string with new_string in the given file. '
+          'All edits are validated first — if any old_string is not found, no file is changed. '
+          'Use this instead of calling str_replace_file repeatedly when you have several related edits.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'edits': {
+            'type': 'array',
+            'description': 'A list of edits to apply.',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'path': {'type': 'string', 'description': 'File path (relative to working dir or absolute).'},
+                'old_string': {'type': 'string', 'description': 'Exact text to find. Must be unique in the file.'},
+                'new_string': {'type': 'string', 'description': 'Text to replace it with.'},
+              },
+              'required': ['path', 'old_string', 'new_string'],
+            },
+          },
+        },
+        'required': ['edits'],
       },
     ),
     Tool(
@@ -260,6 +292,50 @@ class AgentService {
         'required': ['path'],
       },
     ),
+    Tool(
+      name: 'background_start',
+      description: 'Start a long-running shell command in the background and return immediately. '
+          'Use for servers, watchers, builds, or anything that would block. '
+          'Returns a job id you can poll with background_status.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'command': {'type': 'string', 'description': 'The shell command to run in the background.'},
+        },
+        'required': ['command'],
+      },
+    ),
+    Tool(
+      name: 'background_status',
+      description: 'Check the status and accumulated output of a background job started with background_start.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string', 'description': 'The job id returned by background_start.'},
+        },
+        'required': ['id'],
+      },
+    ),
+    Tool(
+      name: 'background_list',
+      description: 'List all background jobs and whether each is still running.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {},
+        'required': [],
+      },
+    ),
+    Tool(
+      name: 'background_kill',
+      description: 'Send a kill signal to a running background job.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string', 'description': 'The job id to kill.'},
+        },
+        'required': ['id'],
+      },
+    ),
   ];
 
   static final _markCompleteTool = Tool(
@@ -311,6 +387,7 @@ class AgentService {
     codeTools.firstWhere((t) => t.name == 'read_file'),
     codeTools.firstWhere((t) => t.name == 'write_file'),
     codeTools.firstWhere((t) => t.name == 'str_replace_file'),
+    codeTools.firstWhere((t) => t.name == 'multi_edit'),
     codeTools.firstWhere((t) => t.name == 'list_directory'),
     _markCompleteTool,
   ];
@@ -424,6 +501,8 @@ class AgentService {
             tc.input['old_string'] as String,
             tc.input['new_string'] as String,
             workingDir),
+        'multi_edit' => _multiEdit(
+            tc.input['edits'] as List, workingDir),
         'write_file' => _writeFile(
             tc.input['path'] as String,
             tc.input['content'] as String,
@@ -439,6 +518,11 @@ class AgentService {
             tc.input['directory'] as String,
             workingDir),
         'create_directory' => _createDir(tc.input['path'] as String, workingDir),
+        'background_start' => _backgroundStart(
+            tc.input['command'] as String, workingDir),
+        'background_status' => _backgroundStatus(tc.input['id'] as String),
+        'background_list' => _backgroundList(),
+        'background_kill' => _backgroundKill(tc.input['id'] as String),
         'mark_complete' => 'Task marked complete: ${tc.input['summary']}',
         'web_search' => _webSearch(
             tc.input['query'] as String,
@@ -481,6 +565,44 @@ class AgentService {
     }
     await f.writeAsString(original.replaceFirst(oldString, newString));
     return 'Replaced in $full';
+  }
+
+  /// Apply multiple targeted edits across one or more files atomically.
+  /// Validates every old_string exists before writing anything, so a bad
+  /// edit never leaves the files in a half-applied state.
+  Future<String> _multiEdit(List<dynamic> rawEdits, String? workingDir) async {
+    if (rawEdits.isEmpty) return 'No edits provided.';
+
+    // Resolve and read all target files first.
+    final resolved = <String, String>{}; // full path -> original content
+    final plan = <({String full, String oldString, String newString})>[];
+    for (final raw in rawEdits) {
+      final e = raw as Map<String, dynamic>;
+      final full = _resolve(e['path'] as String, workingDir);
+      final oldString = e['old_string'] as String;
+      final newString = e['new_string'] as String;
+
+      if (!resolved.containsKey(full)) {
+        final f = File(full);
+        if (!await f.exists()) return 'File not found: $full';
+        resolved[full] = await f.readAsString();
+      }
+      if (!resolved[full]!.contains(oldString)) {
+        return 'old_string not found in $full — no changes made.';
+      }
+      plan.add((full: full, oldString: oldString, newString: newString));
+    }
+
+    // Apply all edits in memory, then write each file once.
+    final updated = Map<String, String>.from(resolved);
+    for (final edit in plan) {
+      updated[edit.full] =
+          updated[edit.full]!.replaceFirst(edit.oldString, edit.newString);
+    }
+    for (final entry in updated.entries) {
+      await File(entry.key).writeAsString(entry.value);
+    }
+    return 'Applied ${plan.length} edit(s) across ${updated.length} file(s).';
   }
 
   Future<String> _writeFile(String path, String content, String? workingDir) async {
@@ -581,6 +703,26 @@ class AgentService {
     await Directory(full).create(recursive: true);
     return 'Created directory: $full';
   }
+
+  Future<String> _backgroundStart(String command, String? workingDir) async {
+    try {
+      final id = await BackgroundProcessManager.instance
+          .start(command, workingDir: workingDir);
+      return 'Started background job $id: $command\n'
+          'Poll with background_status(id: "$id") to check progress.';
+    } catch (e) {
+      return 'Error starting background job: $e';
+    }
+  }
+
+  Future<String> _backgroundStatus(String id) async =>
+      BackgroundProcessManager.instance.status(id);
+
+  Future<String> _backgroundList() async =>
+      BackgroundProcessManager.instance.list();
+
+  Future<String> _backgroundKill(String id) async =>
+      BackgroundProcessManager.instance.kill(id);
 
   /// Web search using DuckDuckGo Instant Answer API
   /// Returns structured results including instant answers and related topics

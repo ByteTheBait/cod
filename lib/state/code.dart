@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
+import '../services/background_service.dart';
 import '../services/sandbox_service.dart';
 
 export '../services/sandbox_service.dart' show SandboxType, ContainerStatus;
@@ -187,7 +188,10 @@ class CodeNotifier extends Notifier<CodeState> {
 
   @override
   CodeState build() {
-    ref.onDispose(() => _sandbox.dispose());
+    ref.onDispose(() {
+      _sandbox.dispose();
+      BackgroundProcessManager.instance.dispose();
+    });
     Future.microtask(_detectSandbox);
     return const CodeState();
   }

@@ -26,7 +26,10 @@ AI-powered developer assistant for macOS — conversational chat, Gmail, Google 
 - Syntax-highlighted file viewer (Atom One Dark, 20+ languages, line numbers, horizontal scroll)
 - Agentic loop — the model calls tools iteratively until the task is complete:
   - `read_file`, `write_file`, `list_directory`, `create_directory`
+  - `str_replace_file` — targeted single-file edits
+  - `multi_edit` — apply several related edits across one or more files atomically in a single call
   - `run_command` — executes shell commands inside a sandbox
+  - `background_start` / `background_status` / `background_list` / `background_kill` — run long-lived processes (servers, watchers, builds) in the background and poll them without blocking the agent loop
   - `search_files` — grep across the working directory
 - **Sandbox isolation**
   - *Docker* (when available): persistent container per session, `--network=none`, `--memory=512m`, `--pids-limit=128`, `--security-opt=no-new-privileges`

@@ -1,0 +1,35 @@
+<svg xmlns="http://w3.org" viewBox="0 0 900 450" width="100%" height="100%">
+  <style>
+    .fish-line { fill: none; stroke: #cbcbcb; stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+  <!-- Main Body and Uncrossed Tail Outline -->
+  <path class="fish-line" d="M 314,352 C 200,290 100,270 100,225 C 100,180 200,140 330,140 C 460,140 600,200 680,230 C 720,200 750,130 830,110 C 800,170 760,200 770,245 C 760,290 800,320 830,380 C 750,360 720,290 680,260 C 560,300 410,380 314,352 Z" />
+  <!-- Dorsal Fin (Top) -->
+  <path class="fish-line" d="M 345,145 C 345,100 400,75 480,75 C 480,105 450,125 485,125 C 510,125 500,145 528,145 C 545,145 530,170 510,183" />
+  <!-- Pectoral Fin (Bottom) -->
+  <path class="fish-line" d="M 314,352 L 345,420 M 360,345 L 395,415 M 410,335 L 435,395" />
+  <!-- Gill Line -->
+  <path class="fish-line" d="M 245,190 C 275,215 275,275 245,310" />
+  <!-- Eye -->
+  <circle cx="190" cy="235" r="10" class="fish-line" />
+  <!-- Scales -->
+  <!-- Row 1 -->
+  <path class="fish-line" d="M 360,195 Q 365,205 360,215" />
+  <path class="fish-line" d="M 415,200 Q 420,210 415,220" />
+  <path class="fish-line" d="M 470,210 Q 475,220 470,230" />
+  <!-- Row 2 -->
+  <path class="fish-line" d="M 335,235 Q 340,245 335,255" />
+  <path class="fish-line" d="M 385,240 Q 390,250 385,260" />
+  <path class="fish-line" d="M 440,245 Q 445,255 440,265" />
+  <path class="fish-line" d="M 495,250 Q 500,260 495,270" />
+  <path class="fish-line" d="M 550,255 Q 555,265 550,275" />
+  <!-- Row 3 -->
+  <path class="fish-line" d="M 365,280 Q 370,290 365,300" />
+  <path class="fish-line" d="M 415,285 Q 420,295 415,305" />
+  <path class="fish-line" d="M 470,290 Q 475,300 470,310" />
+  <path class="fish-line" d="M 525,295 Q 530,305 525,315" />
+  <!-- Row 4 -->
+  <path class="fish-line" d="M 395,330 Q 400,340 395,350" />
+  <path class="fish-line" d="M 445,335 Q 450,345 445,355" />
+</svg>
+

@@ -10,6 +10,11 @@
 #
 #   --build N   Build number appended after '+'. Defaults to 1.
 #
+#   --swap-apps Delete ~/Applications/Cod.app and replace it with the new
+#               build. If it's not found there, prompts before continuing
+#               (it might be in /Applications — continuing could create a
+#               duplicate).
+#
 # What it does:
 #   1. Updates the version in pubspec.yaml
 #   2. Builds the macOS release (with the Google/Supabase defines from .env)
@@ -29,6 +34,7 @@ set -euo pipefail
 
 VERSION=""
 BUILD="1"
+SWAP_APPS=false
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -40,6 +46,10 @@ while [[ $# -gt 0 ]]; do
     --version|-v)
       VERSION="$2"
       shift 2
+      ;;
+    --swap-apps)
+      SWAP_APPS=true
+      shift
       ;;
     -h|--help)
       awk '/^#/{print substr($0,3)} /^[^#]/{exit}' "$0"
@@ -122,6 +132,28 @@ hdiutil create \
   "$DMG_NAME"
 echo "→ DMG created: ${DMG_NAME}"
 
+# ── Swap apps (--swap-apps) ─────────────────────────────────────────────────
+if [[ "$SWAP_APPS" == true ]]; then
+  TARGET_APP="$HOME/Applications/Cod.app"
+  if [[ -d "$TARGET_APP" ]]; then
+    echo "→ Replacing ${TARGET_APP} with the new build..."
+    rm -rf "$TARGET_APP"
+    cp -R "$APP_PATH" "$TARGET_APP"
+    echo "→ Installed new Cod.app to ${TARGET_APP}"
+  else
+    echo "→ ${TARGET_APP} not found."
+    echo "   It might be in /Applications instead. If you continue you might have a duplicate."
+    read -r -p "   Would you like to continue? (y/N) " answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+      echo "→ Installing new Cod.app to ${TARGET_APP}..."
+      cp -R "$APP_PATH" "$TARGET_APP"
+      echo "→ Installed new Cod.app to ${TARGET_APP}"
+    else
+      echo "→ Skipping app install."
+    fi
+  fi
+fi
+
 # ── Commit the version bump ────────────────────────────────────────────────────
 git add pubspec.yaml
 git commit -m "Bump version to ${VERSION}" >/dev/null
@@ -187,13 +219,15 @@ if command -v gh >/dev/null 2>&1; then
     gh release create "$TAG" \
       --title "$SUBJECT" \
       --notes "$DESCRIPTION" \
-      --prerelease
+      --prerelease \
+      "$DMG_NAME"
   else
     gh release create "$TAG" \
       --title "$SUBJECT" \
-      --notes "$DESCRIPTION"
+      --notes "$DESCRIPTION" \
+      "$DMG_NAME"
   fi
-  echo "→ GitHub release created."
+  echo "→ GitHub release created with ${DMG_NAME} attached."
 else
   echo "→ 'gh' not found — skipping GitHub release. Tag ${TAG} pushed."
 fi

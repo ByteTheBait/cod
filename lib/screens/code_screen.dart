@@ -91,9 +91,12 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
           'Working directory: $workingDir\n'
           'Be concise. Always read a file with read_file before modifying it. '
           'When editing existing files use str_replace_file — it is safer and only changes what you intend. '
-          'Only use write_file to create brand-new files.'
+          'Only use write_file to create brand-new files. '
+          'For several related edits across files, use multi_edit in a single call. '
+          'Use background_start for long-running commands (servers, watchers, builds) and poll with background_status.'
         : 'You are an expert coding assistant. Be concise and think step-by-step. '
-          'When editing existing files use str_replace_file. Only use write_file for new files.';
+          'When editing existing files use str_replace_file. Only use write_file for new files. '
+          'For several related edits across files, use multi_edit in a single call.';
 
     final history = ref.read(codeProvider).history;
     final service = AgentService();
@@ -156,6 +159,11 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
     if (input.containsKey('path')) return '"${input['path']}"';
     if (input.containsKey('command')) return '"${input['command']}"';
     if (input.containsKey('pattern')) return '"${input['pattern']}" in ${input['directory'] ?? '.'}';
+    if (input.containsKey('edits')) {
+      final edits = input['edits'] as List;
+      return '${edits.length} edit(s) across ${edits.map((e) => (e as Map)['path']).toSet().length} file(s)';
+    }
+    if (input.containsKey('id')) return 'job "${input['id']}"';
     return input.entries.map((e) => '${e.key}: ${e.value}').join(', ');
   }
 
