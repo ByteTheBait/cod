@@ -52,7 +52,7 @@ class UpdateService {
       return UpdateInfo(
         latestVersion: tag,
         releaseUrl: url,
-        isUpdateAvailable: _isNewer(tag, currentVersion),
+        isUpdateAvailable: isNewer(tag, currentVersion),
       );
     } catch (_) {
       return _fromPrefs(prefs, currentVersion);
@@ -66,11 +66,15 @@ class UpdateService {
     return UpdateInfo(
       latestVersion: tag,
       releaseUrl: url,
-      isUpdateAvailable: _isNewer(tag, currentVersion),
+      isUpdateAvailable: isNewer(tag, currentVersion),
     );
   }
 
-  bool _isNewer(String latest, String current) {
+  /// Whether [latest] is a newer version than [current]. Compares the numeric
+  /// major/minor/patch segments; any non-numeric or missing segment is treated
+  /// as zero, so build metadata (`+1`) and prerelease suffixes (`-beta`) do
+  /// not affect the comparison.
+  static bool isNewer(String latest, String current) {
     final l = _parse(latest);
     final c = _parse(current);
     for (int i = 0; i < 3; i++) {
@@ -80,8 +84,11 @@ class UpdateService {
     return false;
   }
 
-  List<int> _parse(String v) {
-    final parts = v.split('.');
+  static List<int> _parse(String v) {
+    // Strip build metadata (+N) and prerelease (-suffix) so they don't
+    // interfere with numeric comparison.
+    final clean = v.split('+').first.split('-').first;
+    final parts = clean.split('.');
     return List.generate(3, (i) => i < parts.length ? int.tryParse(parts[i]) ?? 0 : 0);
   }
 }

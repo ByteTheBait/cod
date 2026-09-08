@@ -1806,7 +1806,11 @@ class _CompanionCard extends ConsumerWidget {
                 Icon(Icons.copy, size: 12, color: cs.onSurface.withValues(alpha: 0.4)),
                 const SizedBox(width: 5),
                 Text(
-                  'Session: ${sync.sessionId.substring(0, 8)}…',
+                  // Guard: on first launch start() may not have run yet, so the
+                  // session id can be empty — substring(0, 8) would crash.
+                  sync.sessionId.isEmpty
+                      ? 'Session: initializing…'
+                      : 'Session: ${sync.sessionId.substring(0, 8)}…',
                   style: TextStyle(
                       fontSize: 11,
                       fontFamily: 'monospace',

@@ -181,8 +181,20 @@ class AppConfig {
   String modelForSubAgent(SubAgent agent) =>
       agent.model?.isNotEmpty == true ? agent.model! : modelFor(Feature.code);
 
-  ProviderConfig get active =>
-      providers[activeProviderId] ?? providers.values.first;
+  /// The active provider, or a safe fallback when the map is empty or the id
+  /// is missing. Never throws — callers (e.g. the daemon, LLM registry) rely
+  /// on this being non-null even in a degraded/empty config.
+  ProviderConfig get active {
+    final byId = providers[activeProviderId];
+    if (byId != null) return byId;
+    if (providers.isNotEmpty) return providers.values.first;
+    return const ProviderConfig(
+      id: '',
+      name: 'Unconfigured',
+      selectedModel: '',
+      models: [],
+    );
+  }
 
   /// The model to use for a given feature, from the active provider.
   String modelFor(Feature feature) => active.modelFor(feature);

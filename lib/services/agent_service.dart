@@ -629,22 +629,30 @@ class AgentService {
 
         String result;
         if (tc.name == 'run_command') {
-          final cmd = tc.input['command'] as String;
-          final buf = StringBuffer();
-          final stream = commandStreamRunner != null
-              ? commandStreamRunner(cmd)
-              : _runCommandStream(cmd, workingDir);
-          await for (final line in stream) {
-            buf.writeln(line);
-            yield AgentCommandOutput(line);
+          final cmd = tc.input['command'];
+          if (cmd is! String || cmd.isEmpty) {
+            result = 'Error: run_command requires a non-empty "command" string.';
+          } else {
+            final buf = StringBuffer();
+            final stream = commandStreamRunner != null
+                ? commandStreamRunner(cmd)
+                : _runCommandStream(cmd, workingDir);
+            await for (final line in stream) {
+              buf.writeln(line);
+              yield AgentCommandOutput(line);
+            }
+            result = buf.isEmpty ? '(no output)' : buf.toString().trimRight();
           }
-          result = buf.isEmpty ? '(no output)' : buf.toString().trimRight();
         } else if (tc.name == 'delegate') {
-          result = delegateRunner != null
-              ? await delegateRunner(
-                  tc.input['subagent'] as String,
-                  tc.input['task'] as String)
-              : 'Delegation is not available in this context.';
+          final subagent = tc.input['subagent'];
+          final task = tc.input['task'];
+          if (delegateRunner != null &&
+              subagent is String && subagent.isNotEmpty &&
+              task is String && task.isNotEmpty) {
+            result = await delegateRunner(subagent, task);
+          } else {
+            result = 'Delegation is not available in this context.';
+          }
         } else if (tc.name == 'delegate_parallel') {
           result = parallelDelegateRunner != null
               ? await parallelDelegateRunner(_parseDelegations(tc.input))
@@ -676,12 +684,23 @@ class AgentService {
         _ => ProviderProtocol.openai,
       };
 
+  /// Parse the `delegations` list from a `delegate_parallel` tool call.
+  /// Defensively skips malformed entries (non-map, missing/empty fields) so a
+  /// bad LLM response can never crash the agent loop.
   List<(String, String)> _parseDelegations(Map<String, dynamic> input) {
-    final raw = input['delegations'] as List? ?? const [];
-    return raw.map((d) {
-      final m = d as Map<String, dynamic>;
-      return (m['subagent'] as String, m['task'] as String);
-    }).toList();
+    final raw = input['delegations'];
+    if (raw is! List) return const [];
+    final out = <(String, String)>[];
+    for (final d in raw) {
+      if (d is! Map) continue;
+      final subagent = d['subagent'];
+      final task = d['task'];
+      if (subagent is String && subagent.isNotEmpty &&
+          task is String && task.isNotEmpty) {
+        out.add((subagent, task));
+      }
+    }
+    return out;
   }
 
   Future<String> _execute(

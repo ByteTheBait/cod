@@ -47,7 +47,8 @@ class CalendarEvent {
       end: _parse(endObj),
       isAllDay: allDay,
       attendees: (json['attendees'] as List<dynamic>?)
-              ?.map((a) => (a as Map<String, dynamic>)['email'] as String? ?? '')
+              ?.whereType<Map<String, dynamic>>()
+              .map((a) => a['email'] as String? ?? '')
               .where((e) => e.isNotEmpty)
               .toList() ??
           [],

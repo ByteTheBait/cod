@@ -239,7 +239,7 @@ class CodeState {
     bool? isRunning,
     CodeMode? mode,
     Object? subAgentId = _unset,
-    SandboxType? sandboxType,
+    Object? sandboxType = _unset,
     SandboxType? requestedSandboxType,
     ContainerStatus? containerStatus,
     String? sandboxImage,
@@ -263,7 +263,9 @@ class CodeState {
         subAgentId: identical(subAgentId, _unset)
             ? this.subAgentId
             : subAgentId as String?,
-        sandboxType: sandboxType ?? this.sandboxType,
+        sandboxType: identical(sandboxType, _unset)
+            ? this.sandboxType
+            : sandboxType as SandboxType?,
         requestedSandboxType: requestedSandboxType ?? this.requestedSandboxType,
         containerStatus: containerStatus ?? this.containerStatus,
         sandboxImage: sandboxImage ?? this.sandboxImage,

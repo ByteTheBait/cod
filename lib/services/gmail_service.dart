@@ -130,8 +130,9 @@ class GmailService {
     final prefs = await SharedPreferences.getInstance();
     final expiryStr = prefs.getString(_prefExpiry);
     if (expiryStr != null) {
-      final expiry = DateTime.parse(expiryStr);
-      if (DateTime.now().isAfter(expiry.subtract(const Duration(minutes: 2)))) {
+      // Guard: a corrupted/empty expiry string must not crash token access.
+      final expiry = DateTime.tryParse(expiryStr);
+      if (expiry == null || DateTime.now().isAfter(expiry.subtract(const Duration(minutes: 2)))) {
         await _refreshToken(prefs);
       }
     }

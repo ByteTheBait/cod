@@ -19,10 +19,24 @@ class MinnowSync {
 
   SupabaseClient get _db => Supabase.instance.client;
 
+  /// Whether remote sync is enabled. Reads the user-controlled
+  /// [AppConfig.minnowSyncEnabled] flag so disabling it truly stops all
+  /// Supabase network I/O (an important privacy control).
+  bool get _enabled {
+    try {
+      return _ref.read(configProvider).minnowSyncEnabled;
+    } catch (_) {
+      // If config isn't ready yet, default to enabled to preserve legacy
+      // behaviour; configProvider always falls back to defaults.
+      return true;
+    }
+  }
+
   String get sessionId => _sessionId;
   String get qrData => 'minnow://session/$_sessionId';
 
   Future<void> start() async {
+    if (!_enabled) return;
     final prefs = await SharedPreferences.getInstance();
     _sessionId = prefs.getString(_prefSessionId) ?? '';
     if (_sessionId.isEmpty) {
@@ -51,16 +65,18 @@ class MinnowSync {
   // ── Task sync to Supabase ─────────────────────────────────────────────────
 
   void syncAllTasks(List<Task> tasks) {
-    if (tasks.isEmpty) return;
+    if (!_enabled || tasks.isEmpty) return;
     final rows = tasks.map(_toRow).toList();
     _db.from('tasks').upsert(rows).then((_) {}).catchError((_) {});
   }
 
   void syncTask(Task task) {
+    if (!_enabled) return;
     _db.from('tasks').upsert(_toRow(task)).then((_) {}).catchError((_) {});
   }
 
   void deleteTask(String id) {
+    if (!_enabled) return;
     _db.from('tasks').delete().eq('id', id).then((_) {}).catchError((_) {});
   }
 
