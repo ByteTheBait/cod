@@ -16,7 +16,6 @@ class CalendarScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cal = ref.watch(calendarProvider);
     final config = ref.watch(configProvider);
-    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
@@ -56,7 +55,7 @@ class _SetupView extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.calendar_month_outlined,
-                size: 48, color: cs.primary.withOpacity(0.5)),
+                size: 48, color: cs.primary.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
             Text('Calendar not connected',
                 style: Theme.of(context).textTheme.titleMedium),
@@ -66,7 +65,7 @@ class _SetupView extends ConsumerWidget {
               'Calendar uses the same sign-in — no separate login needed.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  fontSize: 13, color: cs.onSurface.withOpacity(0.55)),
+                  fontSize: 13, color: cs.onSurface.withValues(alpha: 0.55)),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
@@ -128,7 +127,7 @@ class _SuggestionsPanel extends ConsumerWidget {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: cs.onSurface.withOpacity(0.55),
+                      color: cs.onSurface.withValues(alpha: 0.55),
                       letterSpacing: 0.8,
                     )),
                 const Spacer(),
@@ -146,7 +145,7 @@ class _SuggestionsPanel extends ConsumerWidget {
                           .read(calendarProvider.notifier)
                           .refreshSuggestions(),
                       child: Icon(Icons.auto_awesome_outlined,
-                          size: 15, color: cs.primary.withOpacity(0.7)),
+                          size: 15, color: cs.primary.withValues(alpha: 0.7)),
                     ),
                   ),
               ],
@@ -186,7 +185,7 @@ class _EmptySuggestions extends StatelessWidget {
               ? 'Analysing emails…'
               : 'Tap ✨ to generate suggestions from your emails + calendar',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.35)),
+          style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.35)),
         ),
       ),
     );
@@ -204,7 +203,7 @@ class _SuggestionCard extends ConsumerWidget {
     final (icon, color) = switch (suggestion.action) {
       SuggestionAction.addEvent => (Icons.event_available_outlined, cs.primary),
       SuggestionAction.reply => (Icons.reply_outlined, Colors.amber.shade600),
-      SuggestionAction.info => (Icons.info_outline, cs.onSurface.withOpacity(0.4)),
+      SuggestionAction.info => (Icons.info_outline, cs.onSurface.withValues(alpha: 0.4)),
     };
 
     return Container(
@@ -227,7 +226,7 @@ class _SuggestionCard extends ConsumerWidget {
                   style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: cs.onSurface.withOpacity(0.9)),
+                      color: cs.onSurface.withValues(alpha: 0.9)),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -238,7 +237,7 @@ class _SuggestionCard extends ConsumerWidget {
           Text(
             suggestion.detail,
             style: TextStyle(
-                fontSize: 11, color: cs.onSurface.withOpacity(0.55)),
+                fontSize: 11, color: cs.onSurface.withValues(alpha: 0.55)),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
           ),
@@ -336,24 +335,24 @@ class _CalendarView extends ConsumerWidget {
             titleTextStyle: TextStyle(
                 color: cs.onSurface, fontSize: 15, fontWeight: FontWeight.w600),
             leftChevronIcon:
-                Icon(Icons.chevron_left, color: cs.onSurface.withOpacity(0.6)),
+                Icon(Icons.chevron_left, color: cs.onSurface.withValues(alpha: 0.6)),
             rightChevronIcon:
-                Icon(Icons.chevron_right, color: cs.onSurface.withOpacity(0.6)),
+                Icon(Icons.chevron_right, color: cs.onSurface.withValues(alpha: 0.6)),
             decoration: BoxDecoration(color: cs.surfaceContainerLow),
           ),
           daysOfWeekStyle: DaysOfWeekStyle(
             weekdayStyle: TextStyle(
-                color: cs.onSurface.withOpacity(0.5), fontSize: 12),
+                color: cs.onSurface.withValues(alpha: 0.5), fontSize: 12),
             weekendStyle: TextStyle(
-                color: cs.onSurface.withOpacity(0.35), fontSize: 12),
+                color: cs.onSurface.withValues(alpha: 0.35), fontSize: 12),
           ),
           calendarStyle: CalendarStyle(
             outsideDaysVisible: false,
             defaultTextStyle: TextStyle(color: cs.onSurface, fontSize: 13),
             weekendTextStyle:
-                TextStyle(color: cs.onSurface.withOpacity(0.6), fontSize: 13),
+                TextStyle(color: cs.onSurface.withValues(alpha: 0.6), fontSize: 13),
             todayDecoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.25),
+                color: cs.primary.withValues(alpha: 0.25),
                 shape: BoxShape.circle),
             todayTextStyle:
                 TextStyle(color: cs.primary, fontWeight: FontWeight.w700),
@@ -401,7 +400,7 @@ class _CalendarView extends ConsumerWidget {
                   child: Text(
                     'No events',
                     style: TextStyle(
-                        fontSize: 13, color: cs.onSurface.withOpacity(0.35)),
+                        fontSize: 13, color: cs.onSurface.withValues(alpha: 0.35)),
                   ),
                 )
               : ListView.separated(
@@ -429,7 +428,7 @@ class _EventTile extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
         border: Border(left: BorderSide(color: color, width: 3)),
       ),
@@ -447,20 +446,20 @@ class _EventTile extends ConsumerWidget {
                 const SizedBox(height: 2),
                 Text(event.timeLabel,
                     style: TextStyle(
-                        fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
+                        fontSize: 11, color: cs.onSurface.withValues(alpha: 0.5))),
                 if (event.location != null) ...[
                   const SizedBox(height: 2),
                   Row(
                     children: [
                       Icon(Icons.location_on_outlined,
-                          size: 11, color: cs.onSurface.withOpacity(0.4)),
+                          size: 11, color: cs.onSurface.withValues(alpha: 0.4)),
                       const SizedBox(width: 3),
                       Flexible(
                         child: LinkifiedText(
                           event.location!,
                           style: TextStyle(
                               fontSize: 11,
-                              color: cs.onSurface.withOpacity(0.45)),
+                              color: cs.onSurface.withValues(alpha: 0.45)),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -473,7 +472,7 @@ class _EventTile extends ConsumerWidget {
                   LinkifiedText(
                     event.description!,
                     style: TextStyle(
-                        fontSize: 11, color: cs.onSurface.withOpacity(0.5)),
+                        fontSize: 11, color: cs.onSurface.withValues(alpha: 0.5)),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -486,7 +485,7 @@ class _EventTile extends ConsumerWidget {
                             ? ' +${event.attendees.length - 3}'
                             : ''),
                     style: TextStyle(
-                        fontSize: 11, color: cs.onSurface.withOpacity(0.4)),
+                        fontSize: 11, color: cs.onSurface.withValues(alpha: 0.4)),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
@@ -495,7 +494,7 @@ class _EventTile extends ConsumerWidget {
           ),
           IconButton(
             icon: Icon(Icons.delete_outline,
-                size: 16, color: cs.onSurface.withOpacity(0.3)),
+                size: 16, color: cs.onSurface.withValues(alpha: 0.3)),
             onPressed: () =>
                 ref.read(calendarProvider.notifier).deleteEvent(event.id),
             tooltip: 'Delete event',
@@ -615,7 +614,7 @@ class _ChatPanelState extends ConsumerState<_ChatPanel> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             fontSize: 12,
-                            color: cs.onSurface.withOpacity(0.35)),
+                            color: cs.onSurface.withValues(alpha: 0.35)),
                       ),
                     )
                   : ListView.builder(
@@ -694,7 +693,7 @@ class _CalChatBubble extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
           constraints: const BoxConstraints(maxWidth: 240),
           decoration: BoxDecoration(
-            color: cs.primary.withOpacity(0.85),
+            color: cs.primary.withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(message.content,
@@ -721,7 +720,7 @@ class _CalChatBubble extends StatelessWidget {
                                 const EdgeInsets.symmetric(horizontal: 2),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: cs.onSurface.withOpacity(0.3),
+                              color: cs.onSurface.withValues(alpha: 0.3),
                             ),
                           ))
                       .toList(),

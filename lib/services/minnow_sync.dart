@@ -49,7 +49,7 @@ class MinnowSync {
         .onBroadcast(event: 'create_task', callback: _handleCommand)
         .onBroadcast(event: 'delete_task', callback: _handleCommand)
         .onBroadcast(event: 'run_task', callback: _handleCommand);
-    await _channel!.subscribe();
+    _channel!.subscribe();
 
     // Sync existing tasks to Supabase after a short delay for TasksNotifier to load
     Future.delayed(const Duration(milliseconds: 800), () {
@@ -117,7 +117,7 @@ class MinnowSync {
     if (payload != null) {
       _channel
           ?.sendBroadcastMessage(event: payload['type'] as String, payload: payload)
-          .catchError((_) {});
+          .catchError((_) => ChannelResponse.error);
     }
   }
 

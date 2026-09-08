@@ -67,7 +67,7 @@ class TaskTile extends StatelessWidget {
                               ? TextDecoration.lineThrough
                               : null,
                           color: task.status == TaskStatus.done
-                              ? cs.onSurface.withOpacity(0.45)
+                              ? cs.onSurface.withValues(alpha: 0.45)
                               : cs.onSurface,
                         ),
                     maxLines: 1,
@@ -78,7 +78,7 @@ class TaskTile extends StatelessWidget {
                     Text(
                       task.description,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: cs.onSurface.withOpacity(0.55),
+                            color: cs.onSurface.withValues(alpha: 0.55),
                           ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -94,7 +94,7 @@ class TaskTile extends StatelessWidget {
                         Text(
                           '${task.thread.length} message${task.thread.length != 1 ? 's' : ''}',
                           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: cs.primary.withOpacity(0.7),
+                                color: cs.primary.withValues(alpha: 0.7),
                               ),
                         ),
                     ],
@@ -133,7 +133,7 @@ class TaskTile extends StatelessWidget {
             if (onRunTap != null && task.status != TaskStatus.done)
               IconButton(
                 icon: Icon(Icons.play_arrow_rounded,
-                    size: 20, color: cs.primary.withOpacity(0.75)),
+                    size: 20, color: cs.primary.withValues(alpha: 0.75)),
                 tooltip: 'Run agent',
                 onPressed: onRunTap,
                 visualDensity: VisualDensity.compact,
@@ -163,8 +163,8 @@ class _StatusChip extends StatelessWidget {
       height: 32,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: color.withOpacity(0.15),
-        border: Border.all(color: color.withOpacity(0.5), width: 1.5),
+        color: color.withValues(alpha: 0.15),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
       ),
       child: Icon(icon, size: 16, color: color),
     );

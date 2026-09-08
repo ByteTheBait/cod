@@ -23,7 +23,7 @@ class MessageBubble extends StatelessWidget {
           margin: const EdgeInsets.symmetric(vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: isUser ? cs.primary.withOpacity(0.85) : cs.surfaceContainerHigh,
+            color: isUser ? cs.primary.withValues(alpha: 0.85) : cs.surfaceContainerHigh,
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(16),
               topRight: const Radius.circular(16),
@@ -51,7 +51,7 @@ class MessageBubble extends StatelessWidget {
                         code: theme.textTheme.bodySmall?.copyWith(
                           fontFamily: 'monospace',
                           backgroundColor: cs.surfaceContainer,
-                          color: cs.primary.withOpacity(0.9),
+                          color: cs.primary.withValues(alpha: 0.9),
                         ),
                         codeblockDecoration: BoxDecoration(
                           color: cs.surfaceContainer,

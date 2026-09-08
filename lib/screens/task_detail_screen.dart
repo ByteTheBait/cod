@@ -257,7 +257,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           ],
           indicatorColor: cs.primary,
           labelColor: cs.primary,
-          unselectedLabelColor: cs.onSurface.withOpacity(0.45),
+          unselectedLabelColor: cs.onSurface.withValues(alpha: 0.45),
         ),
       ),
       body: Column(
@@ -270,7 +270,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
               child: Text(
                 task.description,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: cs.onSurface.withOpacity(0.55)),
+                      color: cs.onSurface.withValues(alpha: 0.55)),
               ),
             ),
           Expanded(
@@ -357,12 +357,12 @@ class _EmptyThread extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.chat_outlined, size: 36, color: cs.primary.withOpacity(0.4)),
+            Icon(Icons.chat_outlined, size: 36, color: cs.primary.withValues(alpha: 0.4)),
             const SizedBox(height: 12),
             Text(
               'Ask about this task',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: cs.onSurface.withOpacity(0.6),
+                    color: cs.onSurface.withValues(alpha: 0.6),
                   ),
             ),
           ],
@@ -488,9 +488,9 @@ class _AgentTab extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: skill.color.withOpacity(0.12),
+                    color: skill.color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: skill.color.withOpacity(0.35)),
+                    border: Border.all(color: skill.color.withValues(alpha: 0.35)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -506,7 +506,7 @@ class _AgentTab extends StatelessWidget {
                       ),
                       if (!running) ...[
                         const SizedBox(width: 4),
-                        Icon(Icons.expand_more, size: 13, color: skill.color.withOpacity(0.7)),
+                        Icon(Icons.expand_more, size: 13, color: skill.color.withValues(alpha: 0.7)),
                       ],
                     ],
                   ),
@@ -522,7 +522,7 @@ class _AgentTab extends StatelessWidget {
                           : skill.label == 'Write'
                               ? 'Creates and edits documents.'
                               : 'Uses all available tools.',
-                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.5)),
+                  style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.5)),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -554,11 +554,11 @@ class _AgentTab extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.smart_toy_outlined,
-                          size: 40, color: cs.primary.withOpacity(0.35)),
+                          size: 40, color: cs.primary.withValues(alpha: 0.35)),
                       const SizedBox(height: 12),
                       Text('Tap Run agent to let the AI work on this task.',
                           style: TextStyle(
-                              color: cs.onSurface.withOpacity(0.45), fontSize: 13)),
+                              color: cs.onSurface.withValues(alpha: 0.45), fontSize: 13)),
                     ],
                   ),
                 )
@@ -607,10 +607,10 @@ class _SkillPickerSheet extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: isActive ? s.color.withOpacity(0.12) : cs.surfaceContainerHigh,
+                  color: isActive ? s.color.withValues(alpha: 0.12) : cs.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: isActive ? s.color.withOpacity(0.5) : Colors.transparent,
+                    color: isActive ? s.color.withValues(alpha: 0.5) : Colors.transparent,
                     width: 1.5,
                   ),
                 ),
@@ -630,7 +630,7 @@ class _SkillPickerSheet extends StatelessWidget {
                           Text(_descriptions[s]!,
                               style: TextStyle(
                                   fontSize: 12,
-                                  color: cs.onSurface.withOpacity(0.5))),
+                                  color: cs.onSurface.withValues(alpha: 0.5))),
                         ],
                       ),
                     ),
@@ -648,7 +648,7 @@ class _SkillPickerSheet extends StatelessWidget {
 
 class _AgentEntryTile extends StatelessWidget {
   final _AgentEntry entry;
-  const _AgentEntryTile({super.key, required this.entry});
+  const _AgentEntryTile({required this.entry});
 
   @override
   Widget build(BuildContext context) {
@@ -658,15 +658,15 @@ class _AgentEntryTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Text(entry.content,
               style: TextStyle(
-                  fontSize: 13, color: cs.onSurface.withOpacity(0.85), height: 1.5)),
+                  fontSize: 13, color: cs.onSurface.withValues(alpha: 0.85), height: 1.5)),
         ),
       _AgentEntryType.toolCall => Container(
           margin: const EdgeInsets.symmetric(vertical: 3),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF3B82F6).withOpacity(0.08),
+            color: const Color(0xFF3B82F6).withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.2)),
+            border: Border.all(color: const Color(0xFF3B82F6).withValues(alpha: 0.2)),
           ),
           child: Row(
             children: [
@@ -683,7 +683,7 @@ class _AgentEntryTile extends StatelessWidget {
                 width: 12,
                 height: 12,
                 child: CircularProgressIndicator(
-                    strokeWidth: 1.5, color: cs.primary.withOpacity(0.5)),
+                    strokeWidth: 1.5, color: cs.primary.withValues(alpha: 0.5)),
               ),
             ],
           ),
@@ -717,7 +717,7 @@ class _AgentEntryTile extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 12,
                     fontFamily: 'monospace',
-                    color: cs.onSurface.withOpacity(0.6),
+                    color: cs.onSurface.withValues(alpha: 0.6),
                     height: 1.4),
               ),
             ],
@@ -727,7 +727,7 @@ class _AgentEntryTile extends StatelessWidget {
           margin: const EdgeInsets.symmetric(vertical: 3),
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: cs.error.withOpacity(0.1),
+            color: cs.error.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(entry.content,

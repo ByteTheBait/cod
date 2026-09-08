@@ -11,7 +11,6 @@ import '../models/config.dart';
 import '../models/subagent.dart';
 import '../models/tool.dart';
 import '../services/agent_service.dart';
-import '../services/sandbox_service.dart';
 import '../state/code.dart';
 import '../state/providers.dart';
 import '../widgets/ai_input_field.dart';
@@ -603,7 +602,7 @@ class _SessionMenu extends ConsumerWidget {
 
     return PopupMenuButton<String>(
       tooltip: 'Session history',
-      icon: Icon(Icons.history, size: 20, color: cs.onSurface.withOpacity(0.7)),
+      icon: Icon(Icons.history, size: 20, color: cs.onSurface.withValues(alpha: 0.7)),
       onSelected: (value) {
         switch (value) {
           case '__new__':
@@ -637,7 +636,7 @@ class _SessionMenu extends ConsumerWidget {
                       ? Icons.radio_button_checked
                       : Icons.radio_button_off,
                   size: 16,
-                  color: isActive ? cs.primary : cs.onSurface.withOpacity(0.4),
+                  color: isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.4),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -655,7 +654,7 @@ class _SessionMenu extends ConsumerWidget {
                 if (isActive)
                   Text(' · ${s.entries.length}',
                       style: TextStyle(
-                          fontSize: 11, color: cs.onSurface.withOpacity(0.4))),
+                          fontSize: 11, color: cs.onSurface.withValues(alpha: 0.4))),
               ],
             ),
           );
@@ -705,7 +704,7 @@ class _SubAgentMenu extends ConsumerWidget {
                   size: 18,
                   color: activeId == null
                       ? cs.primary
-                      : cs.onSurface.withOpacity(0.6)),
+                      : cs.onSurface.withValues(alpha: 0.6)),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -723,7 +722,7 @@ class _SubAgentMenu extends ConsumerWidget {
                     Text('All tools — files, shell, and web.',
                         style: TextStyle(
                             fontSize: 11,
-                            color: cs.onSurface.withOpacity(0.5))),
+                            color: cs.onSurface.withValues(alpha: 0.5))),
                   ],
                 ),
               ),
@@ -742,7 +741,7 @@ class _SubAgentMenu extends ConsumerWidget {
                     size: 18,
                     color: a.id == activeId
                         ? cs.primary
-                        : cs.onSurface.withOpacity(0.6)),
+                        : cs.onSurface.withValues(alpha: 0.6)),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -760,7 +759,7 @@ class _SubAgentMenu extends ConsumerWidget {
                       Text(a.description,
                           style: TextStyle(
                               fontSize: 11,
-                              color: cs.onSurface.withOpacity(0.5)),
+                              color: cs.onSurface.withValues(alpha: 0.5)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis),
                     ],
@@ -778,8 +777,8 @@ class _SubAgentMenu extends ConsumerWidget {
         decoration: BoxDecoration(
           color: active != null
               ? active.icon == SubAgentIcons.explore
-                  ? Colors.teal.withOpacity(0.12)
-                  : cs.primary.withOpacity(0.12)
+                  ? Colors.teal.withValues(alpha: 0.12)
+                  : cs.primary.withValues(alpha: 0.12)
               : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(8),
         ),
@@ -790,7 +789,7 @@ class _SubAgentMenu extends ConsumerWidget {
                 size: 13,
                 color: active != null
                     ? cs.primary
-                    : cs.onSurface.withOpacity(0.6)),
+                    : cs.onSurface.withValues(alpha: 0.6)),
             const SizedBox(width: 5),
             Text(
               active?.name ?? 'Agent',
@@ -799,7 +798,7 @@ class _SubAgentMenu extends ConsumerWidget {
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.4,
                 color:
-                    active != null ? cs.primary : cs.onSurface.withOpacity(0.6),
+                    active != null ? cs.primary : cs.onSurface.withValues(alpha: 0.6),
               ),
             ),
             const SizedBox(width: 2),
@@ -807,8 +806,8 @@ class _SubAgentMenu extends ConsumerWidget {
                 size: 14,
                 color: (active != null
                         ? cs.primary
-                        : cs.onSurface.withOpacity(0.6))
-                    .withOpacity(0.7)),
+                        : cs.onSurface.withValues(alpha: 0.6))
+                    .withValues(alpha: 0.7)),
           ],
         ),
       ),
@@ -839,7 +838,7 @@ class _ModeMenu extends ConsumerWidget {
                 Icon(m.icon,
                     size: 18,
                     color:
-                        m == mode ? cs.primary : cs.onSurface.withOpacity(0.6)),
+                        m == mode ? cs.primary : cs.onSurface.withValues(alpha: 0.6)),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -856,7 +855,7 @@ class _ModeMenu extends ConsumerWidget {
                       Text(m.description,
                           style: TextStyle(
                               fontSize: 11,
-                              color: cs.onSurface.withOpacity(0.5))),
+                              color: cs.onSurface.withValues(alpha: 0.5))),
                     ],
                   ),
                 ),
@@ -870,9 +869,9 @@ class _ModeMenu extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
           color: mode == CodeMode.ask || mode == CodeMode.plan
-              ? Colors.amber.withOpacity(0.12)
+              ? Colors.amber.withValues(alpha: 0.12)
               : mode == CodeMode.edit
-                  ? cs.primary.withOpacity(0.12)
+                  ? cs.primary.withValues(alpha: 0.12)
                   : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(8),
         ),
@@ -902,7 +901,7 @@ class _ModeMenu extends ConsumerWidget {
                 color: (mode == CodeMode.ask || mode == CodeMode.plan
                         ? Colors.amber.shade400
                         : cs.primary)
-                    .withOpacity(0.7)),
+                    .withValues(alpha: 0.7)),
           ],
         ),
       ),
@@ -924,7 +923,7 @@ class _ApproveToolDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return AlertDialog(
-      backgroundColor: Colors.grey.shade900.withOpacity(0.98),
+      backgroundColor: Colors.grey.shade900.withValues(alpha: 0.98),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       title: Row(
         children: [
@@ -945,7 +944,7 @@ class _ApproveToolDialog extends StatelessWidget {
             'The agent wants to run the **${call.name}** tool. Review the '
             'arguments before allowing it.',
             style:
-                TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.8)),
+                TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: 0.8)),
           ),
           const SizedBox(height: 12),
           Container(
@@ -969,7 +968,7 @@ class _ApproveToolDialog extends StatelessWidget {
               'Plan mode: read-only tools run automatically; state-changing '
               'and shell tools require approval.',
               style:
-                  TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5)),
+                  TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.5)),
             ),
           ],
         ],
@@ -1042,7 +1041,7 @@ class _FilePanel extends StatelessWidget {
               child: Row(
                 children: [
                   Icon(Icons.folder_outlined,
-                      size: 14, color: cs.primary.withOpacity(0.7)),
+                      size: 14, color: cs.primary.withValues(alpha: 0.7)),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -1050,7 +1049,7 @@ class _FilePanel extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: cs.onSurface.withOpacity(0.55),
+                        color: cs.onSurface.withValues(alpha: 0.55),
                         letterSpacing: 0.8,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1059,7 +1058,7 @@ class _FilePanel extends StatelessWidget {
                   Tooltip(
                     message: 'Open folder',
                     child: Icon(Icons.drive_folder_upload_outlined,
-                        size: 16, color: cs.onSurface.withOpacity(0.4)),
+                        size: 16, color: cs.onSurface.withValues(alpha: 0.4)),
                   ),
                 ],
               ),
@@ -1155,7 +1154,7 @@ class _FolderMenuSheetState extends State<_FolderMenuSheet> {
           Text(
             'Supports ~, relative paths, and absolute paths.',
             style:
-                TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.45)),
+                TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
           ),
           const SizedBox(height: 16),
           // Browse
@@ -1165,7 +1164,7 @@ class _FolderMenuSheetState extends State<_FolderMenuSheet> {
             title: const Text('Browse…', style: TextStyle(fontSize: 14)),
             subtitle: Text('Use the native folder picker',
                 style: TextStyle(
-                    fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
+                    fontSize: 11, color: cs.onSurface.withValues(alpha: 0.5))),
             onTap: widget.onBrowse,
           ),
           if (widget.recentFolders.isNotEmpty) ...[
@@ -1177,7 +1176,7 @@ class _FolderMenuSheetState extends State<_FolderMenuSheet> {
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.8,
-                    color: cs.onSurface.withOpacity(0.45))),
+                    color: cs.onSurface.withValues(alpha: 0.45))),
             const SizedBox(height: 4),
             ...widget.recentFolders.map((dir) {
               final name = dir.split('/').last;
@@ -1185,7 +1184,7 @@ class _FolderMenuSheetState extends State<_FolderMenuSheet> {
                 contentPadding: EdgeInsets.zero,
                 dense: true,
                 leading: Icon(Icons.folder_outlined,
-                    size: 18, color: cs.primary.withOpacity(0.7)),
+                    size: 18, color: cs.primary.withValues(alpha: 0.7)),
                 title: Text(name,
                     style: const TextStyle(fontSize: 13),
                     maxLines: 1,
@@ -1194,12 +1193,12 @@ class _FolderMenuSheetState extends State<_FolderMenuSheet> {
                     style: TextStyle(
                         fontSize: 10,
                         fontFamily: 'monospace',
-                        color: cs.onSurface.withOpacity(0.4)),
+                        color: cs.onSurface.withValues(alpha: 0.4)),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 trailing: IconButton(
                   icon: Icon(Icons.close,
-                      size: 14, color: cs.onSurface.withOpacity(0.35)),
+                      size: 14, color: cs.onSurface.withValues(alpha: 0.35)),
                   tooltip: 'Remove from recent',
                   onPressed: () => widget.onRemoveRecent(dir),
                 ),
@@ -1305,7 +1304,7 @@ class _WorkspaceTab extends StatelessWidget {
           children: [
             Icon(Icons.code,
                 size: 12,
-                color: isActive ? cs.primary : cs.onSurface.withOpacity(0.45)),
+                color: isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.45)),
             const SizedBox(width: 5),
             Flexible(
               child: Text(
@@ -1313,7 +1312,7 @@ class _WorkspaceTab extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   color:
-                      isActive ? cs.onSurface : cs.onSurface.withOpacity(0.5),
+                      isActive ? cs.onSurface : cs.onSurface.withValues(alpha: 0.5),
                   fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -1323,7 +1322,7 @@ class _WorkspaceTab extends StatelessWidget {
             GestureDetector(
               onTap: onClose,
               child: Icon(Icons.close,
-                  size: 12, color: cs.onSurface.withOpacity(0.4)),
+                  size: 12, color: cs.onSurface.withValues(alpha: 0.4)),
             ),
           ],
         ),
@@ -1414,7 +1413,7 @@ class _Tab extends StatelessWidget {
           children: [
             Icon(icon,
                 size: 12,
-                color: isActive ? cs.primary : cs.onSurface.withOpacity(0.45)),
+                color: isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.45)),
             const SizedBox(width: 5),
             Flexible(
               child: Text(
@@ -1422,7 +1421,7 @@ class _Tab extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   color:
-                      isActive ? cs.onSurface : cs.onSurface.withOpacity(0.5),
+                      isActive ? cs.onSurface : cs.onSurface.withValues(alpha: 0.5),
                   fontWeight: isActive ? FontWeight.w500 : FontWeight.normal,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -1433,7 +1432,7 @@ class _Tab extends StatelessWidget {
               GestureDetector(
                 onTap: onClose,
                 child: Icon(Icons.close,
-                    size: 12, color: cs.onSurface.withOpacity(0.4)),
+                    size: 12, color: cs.onSurface.withValues(alpha: 0.4)),
               ),
             ],
           ],
@@ -1461,7 +1460,7 @@ class _SandboxBar extends ConsumerWidget {
           isDocker
               ? 'Docker ready — set a folder to start container'
               : 'Restricted mode',
-          cs.onSurface.withOpacity(0.3)
+          cs.onSurface.withValues(alpha: 0.3)
         ),
       ContainerStatus.starting => (
           Icons.hourglass_empty,
@@ -1537,7 +1536,7 @@ class _ContextChip extends ConsumerWidget {
         ? Colors.red.shade400
         : tokens > 50000
             ? Colors.amber.shade400
-            : cs.onSurface.withOpacity(0.4);
+            : cs.onSurface.withValues(alpha: 0.4);
     return GestureDetector(
       onTap: () => ref.read(codeProvider.notifier).compactHistory(),
       child: Tooltip(
@@ -1546,7 +1545,7 @@ class _ContextChip extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(4),
           ),
           child: Row(
@@ -1610,13 +1609,13 @@ class _EmptyAgent extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       children: [
         Icon(Icons.smart_toy_outlined,
-            size: 36, color: cs.primary.withOpacity(0.35)),
+            size: 36, color: cs.primary.withValues(alpha: 0.35)),
         const SizedBox(height: 12),
         Text(
           workingDir.isNotEmpty ? workingDir.split('/').last : 'Code agent',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: cs.onSurface.withOpacity(0.6),
+                color: cs.onSurface.withValues(alpha: 0.6),
                 fontWeight: FontWeight.w700,
               ),
         ),
@@ -1645,12 +1644,12 @@ class _SuggestionTile extends StatelessWidget {
       child: Row(
         children: [
           Icon(Icons.arrow_forward,
-              size: 13, color: cs.primary.withOpacity(0.5)),
+              size: 13, color: cs.primary.withValues(alpha: 0.5)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(text,
                 style: TextStyle(
-                    fontSize: 13, color: cs.onSurface.withOpacity(0.6))),
+                    fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6))),
           ),
         ],
       ),
@@ -2179,7 +2178,7 @@ class _EntryTileState extends State<_EntryTile> {
             constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.65),
             decoration: BoxDecoration(
-              color: cs.primary.withOpacity(0.85),
+              color: cs.primary.withValues(alpha: 0.85),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(14),
                 topRight: Radius.circular(14),
@@ -2202,7 +2201,7 @@ class _EntryTileState extends State<_EntryTile> {
                   fontFamily: 'monospace',
                   fontSize: 12,
                   backgroundColor: cs.surfaceContainerHigh,
-                  color: cs.primary.withOpacity(0.9)),
+                  color: cs.primary.withValues(alpha: 0.9)),
               codeblockDecoration: BoxDecoration(
                   color: cs.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(8)),
@@ -2213,9 +2212,9 @@ class _EntryTileState extends State<_EntryTile> {
           margin: const EdgeInsets.symmetric(vertical: 3),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF3B82F6).withOpacity(0.08),
+            color: const Color(0xFF3B82F6).withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.2)),
+            border: Border.all(color: const Color(0xFF3B82F6).withValues(alpha: 0.2)),
           ),
           child: Row(
             children: [
@@ -2232,7 +2231,7 @@ class _EntryTileState extends State<_EntryTile> {
                 child: Text(e.content,
                     style: TextStyle(
                         fontSize: 12,
-                        color: cs.onSurface.withOpacity(0.55),
+                        color: cs.onSurface.withValues(alpha: 0.55),
                         fontFamily: 'monospace'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
@@ -2247,7 +2246,7 @@ class _EntryTileState extends State<_EntryTile> {
             color: const Color(0xFF1E1E2E),
             borderRadius: BorderRadius.circular(8),
             border:
-                Border.all(color: const Color(0xFF3B82F6).withOpacity(0.15)),
+                Border.all(color: const Color(0xFF3B82F6).withValues(alpha: 0.15)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2303,14 +2302,14 @@ class _EntryTileState extends State<_EntryTile> {
                           ? '${e.content.split('\n').length} lines ▲'
                           : '${e.content.split('\n').length} lines ▼',
                       style: TextStyle(
-                          fontSize: 10, color: cs.onSurface.withOpacity(0.3)),
+                          fontSize: 10, color: cs.onSurface.withValues(alpha: 0.3)),
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () =>
                           Clipboard.setData(ClipboardData(text: e.content)),
                       child: Icon(Icons.copy,
-                          size: 12, color: cs.onSurface.withOpacity(0.3)),
+                          size: 12, color: cs.onSurface.withValues(alpha: 0.3)),
                     ),
                   ],
                 ),
@@ -2322,7 +2321,7 @@ class _EntryTileState extends State<_EntryTile> {
                   style: TextStyle(
                       fontSize: 12,
                       fontFamily: 'monospace',
-                      color: cs.onSurface.withOpacity(0.65),
+                      color: cs.onSurface.withValues(alpha: 0.65),
                       height: 1.4),
                 ),
               ],
@@ -2333,7 +2332,7 @@ class _EntryTileState extends State<_EntryTile> {
           margin: const EdgeInsets.symmetric(vertical: 3),
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.error.withOpacity(0.1),
+            color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(e.content,

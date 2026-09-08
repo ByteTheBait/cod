@@ -304,7 +304,7 @@ class AgentLLM {
       if (content is List) {
         final isToolResult = content.any((b) => (b as Map)['type'] == 'tool_result');
         if (isToolResult) {
-          final parts = (content as List).map((block) {
+          final parts = content.map((block) {
             final b = block as Map<String, dynamic>;
             final name = idToName[b['tool_use_id'] as String] ?? 'unknown';
             return {'functionResponse': {'name': name, 'response': {'result': b['content']}}};

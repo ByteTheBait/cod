@@ -111,7 +111,7 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) => Text(
         text.toUpperCase(),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.45),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
               letterSpacing: 1.2,
               fontWeight: FontWeight.w700,
             ),
@@ -156,7 +156,7 @@ class _ProviderSelector extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: isActive ? color.withOpacity(0.2) : cs.surfaceContainerLow,
+              color: isActive ? color.withValues(alpha: 0.2) : cs.surfaceContainerLow,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isActive ? color : cs.surfaceContainerHigh,
@@ -167,7 +167,7 @@ class _ProviderSelector extends StatelessWidget {
               pc.name,
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: isActive ? color : cs.onSurface.withOpacity(0.7),
+                color: isActive ? color : cs.onSurface.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -256,7 +256,7 @@ class _ProviderCardState extends ConsumerState<_ProviderCard> {
                 '· ${p.protocol.label}',
                 style: TextStyle(
                   fontSize: 11,
-                  color: cs.onSurface.withOpacity(0.4),
+                  color: cs.onSurface.withValues(alpha: 0.4),
                 ),
               ),
               const Spacer(),
@@ -265,7 +265,7 @@ class _ProviderCardState extends ConsumerState<_ProviderCard> {
               if (!_builtinIds.contains(p.id))
                 IconButton(
                   icon: Icon(Icons.delete_outline,
-                      size: 18, color: cs.error.withOpacity(0.8)),
+                      size: 18, color: cs.error.withValues(alpha: 0.8)),
                   tooltip: 'Remove provider',
                   onPressed: () => _remove(context),
                 ),
@@ -479,7 +479,7 @@ class _ProviderEditorSheetState extends State<_ProviderEditorSheet> {
                         horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: isActive
-                          ? cs.primary.withOpacity(0.15)
+                          ? cs.primary.withValues(alpha: 0.15)
                           : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
@@ -495,7 +495,7 @@ class _ProviderEditorSheetState extends State<_ProviderEditorSheet> {
                             isActive ? FontWeight.w700 : FontWeight.w500,
                         color: isActive
                             ? cs.primary
-                            : cs.onSurface.withOpacity(0.6),
+                            : cs.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ),
@@ -581,7 +581,7 @@ class _FeatureModelsCard extends ConsumerWidget {
             'Choose a model for each feature. All use ${p.name} — '
             'the same API key. A custom model still uses the provider\'s '
             'API endpoint.',
-            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.45)),
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
           ),
           const SizedBox(height: 12),
           ...Feature.values.map((f) {
@@ -647,7 +647,7 @@ class _FeatureModelInputState extends ConsumerState<_FeatureModelInput> {
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          Icon(widget.feature.icon, size: 16, color: cs.primary.withOpacity(0.7)),
+          Icon(widget.feature.icon, size: 16, color: cs.primary.withValues(alpha: 0.7)),
           const SizedBox(width: 10),
           SizedBox(
             width: 90,
@@ -703,7 +703,7 @@ class _SubAgentsCard extends ConsumerWidget {
           Text(
             'Specialised agents for the Code tab. Each has its own system '
             'prompt and restricted tool set. Pick one from the Code toolbar.',
-            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.45)),
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
           ),
           const SizedBox(height: 12),
           for (final a in defaults) _SubAgentRow(agent: a),
@@ -763,7 +763,7 @@ class _SubAgentRow extends ConsumerWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: cs.primary.withOpacity(0.12),
+              color: cs.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(agent.iconData, size: 18, color: cs.primary),
@@ -780,7 +780,7 @@ class _SubAgentRow extends ConsumerWidget {
                 Text(
                   agent.description,
                   style: TextStyle(
-                      fontSize: 11, color: cs.onSurface.withOpacity(0.5)),
+                      fontSize: 11, color: cs.onSurface.withValues(alpha: 0.5)),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -790,7 +790,7 @@ class _SubAgentRow extends ConsumerWidget {
                   '${agent.model?.isNotEmpty == true ? '  ·  ${agent.model}' : ''}',
                   style: TextStyle(
                       fontSize: 10,
-                      color: cs.primary.withOpacity(0.7),
+                      color: cs.primary.withValues(alpha: 0.7),
                       fontFamily: 'monospace'),
                 ),
               ],
@@ -799,14 +799,14 @@ class _SubAgentRow extends ConsumerWidget {
           if (!agent.isDefault)
             IconButton(
               icon: Icon(Icons.edit_outlined,
-                  size: 16, color: cs.onSurface.withOpacity(0.5)),
+                  size: 16, color: cs.onSurface.withValues(alpha: 0.5)),
               tooltip: 'Edit',
               onPressed: () => _openEditor(context, ref, agent),
             ),
           if (!agent.isDefault)
             IconButton(
               icon: Icon(Icons.delete_outline,
-                  size: 16, color: cs.error.withOpacity(0.8)),
+                  size: 16, color: cs.error.withValues(alpha: 0.8)),
               tooltip: 'Delete',
               onPressed: () => _delete(context, ref, agent),
             ),
@@ -952,7 +952,7 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withOpacity(0.6))),
+                    color: cs.onSurface.withValues(alpha: 0.6))),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -968,7 +968,7 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                           horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: _useDefaultModel
-                            ? cs.primary.withOpacity(0.15)
+                            ? cs.primary.withValues(alpha: 0.15)
                             : cs.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
@@ -987,14 +987,14 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                                 fontWeight: FontWeight.w600,
                                 color: _useDefaultModel
                                     ? cs.primary
-                                    : cs.onSurface.withOpacity(0.6),
+                                    : cs.onSurface.withValues(alpha: 0.6),
                               )),
                           const SizedBox(height: 2),
                           Text(
                             'Uses the model set for the Code feature.',
                             style: TextStyle(
                                 fontSize: 10,
-                                color: cs.onSurface.withOpacity(0.45)),
+                                color: cs.onSurface.withValues(alpha: 0.45)),
                           ),
                         ],
                       ),
@@ -1011,7 +1011,7 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                           horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: !_useDefaultModel
-                            ? cs.primary.withOpacity(0.15)
+                            ? cs.primary.withValues(alpha: 0.15)
                             : cs.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
@@ -1030,14 +1030,14 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                                 fontWeight: FontWeight.w600,
                                 color: !_useDefaultModel
                                     ? cs.primary
-                                    : cs.onSurface.withOpacity(0.6),
+                                    : cs.onSurface.withValues(alpha: 0.6),
                               )),
                           const SizedBox(height: 2),
                           Text(
                             'Use a specific model for this sub-agent.',
                             style: TextStyle(
                                 fontSize: 10,
-                                color: cs.onSurface.withOpacity(0.45)),
+                                color: cs.onSurface.withValues(alpha: 0.45)),
                           ),
                         ],
                       ),
@@ -1061,7 +1061,7 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withOpacity(0.6))),
+                    color: cs.onSurface.withValues(alpha: 0.6))),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -1076,7 +1076,7 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                     height: 40,
                     decoration: BoxDecoration(
                       color: isActive
-                          ? cs.primary.withOpacity(0.18)
+                          ? cs.primary.withValues(alpha: 0.18)
                           : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
@@ -1086,7 +1086,7 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                     ),
                     child: Icon(SubAgentIcons.dataOf(ic),
                         size: 20,
-                        color: isActive ? cs.primary : cs.onSurface.withOpacity(0.6)),
+                        color: isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.6)),
                   ),
                 );
               }).toList(),
@@ -1096,7 +1096,7 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withOpacity(0.6))),
+                    color: cs.onSurface.withValues(alpha: 0.6))),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -1117,7 +1117,7 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                         horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: isActive
-                          ? cs.primary.withOpacity(0.15)
+                          ? cs.primary.withValues(alpha: 0.15)
                           : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
@@ -1133,7 +1133,7 @@ class _SubAgentEditorSheetState extends State<_SubAgentEditorSheet> {
                         fontWeight: FontWeight.w600,
                         color: isActive
                             ? cs.primary
-                            : cs.onSurface.withOpacity(0.55),
+                            : cs.onSurface.withValues(alpha: 0.55),
                       ),
                     ),
                   ),
@@ -1194,7 +1194,7 @@ class _ShortcutsCard extends ConsumerWidget {
         children: [
           Text(
             'Rebind keyboard shortcuts. Click a key to record a new one.',
-            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.45)),
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
           ),
           const SizedBox(height: 12),
           for (final s in ShortcutDefaults.all)
@@ -1215,7 +1215,7 @@ class _ShortcutsCard extends ConsumerWidget {
                   GestureDetector(
                     onTap: () => notifier.setShortcut(s.id, ''),
                     child: Icon(Icons.restart_alt,
-                        size: 16, color: cs.onSurface.withOpacity(0.4)),
+                        size: 16, color: cs.onSurface.withValues(alpha: 0.4)),
                   ),
                 ],
               ),
@@ -1304,7 +1304,7 @@ class _DaemonCardState extends ConsumerState<_DaemonCard> {
           const SizedBox(height: 4),
           Text(
             'Automatically run the agent on all pending tasks.',
-            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.45)),
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.45)),
           ),
           const SizedBox(height: 14),
           Wrap(
@@ -1318,7 +1318,7 @@ class _DaemonCardState extends ConsumerState<_DaemonCard> {
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: isActive ? cs.primary.withOpacity(0.18) : cs.surfaceContainerHigh,
+                    color: isActive ? cs.primary.withValues(alpha: 0.18) : cs.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isActive ? cs.primary : cs.surfaceContainerHigh,
@@ -1330,7 +1330,7 @@ class _DaemonCardState extends ConsumerState<_DaemonCard> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: isActive ? cs.primary : cs.onSurface.withOpacity(0.65),
+                      color: isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.65),
                     ),
                   ),
                 ),
@@ -1360,7 +1360,7 @@ class _DaemonCardState extends ConsumerState<_DaemonCard> {
                 if (daemon.lastRun != null)
                   Text(
                     'Last run: ${_formatTime(daemon.lastRun!)}',
-                    style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.4)),
+                    style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.4)),
                   ),
                 const Spacer(),
                 GestureDetector(
@@ -1370,7 +1370,7 @@ class _DaemonCardState extends ConsumerState<_DaemonCard> {
                     style: TextStyle(
                       fontSize: 12,
                       color: daemon.isTicking
-                          ? cs.onSurface.withOpacity(0.3)
+                          ? cs.onSurface.withValues(alpha: 0.3)
                           : cs.primary,
                       decoration: TextDecoration.underline,
                     ),
@@ -1396,7 +1396,7 @@ class _DaemonCardState extends ConsumerState<_DaemonCard> {
           const SizedBox(height: 4),
           Text(
             'Tasks untouched by you or the agent are deleted automatically.',
-            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.4)),
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.4)),
           ),
           const SizedBox(height: 18),
           const Divider(height: 1),
@@ -1411,7 +1411,7 @@ class _DaemonCardState extends ConsumerState<_DaemonCard> {
           const SizedBox(height: 4),
           Text(
             'Max tool-use rounds the agent runs before giving up.',
-            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.4)),
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.4)),
           ),
           const SizedBox(height: 14),
           _IterationCapSelector(
@@ -1424,7 +1424,7 @@ class _DaemonCardState extends ConsumerState<_DaemonCard> {
           const SizedBox(height: 4),
           Text(
             'Max times the auto-run daemon re-runs each pending task.',
-            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.4)),
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.4)),
           ),
         ],
       ),
@@ -1465,7 +1465,7 @@ class _TtlSelector extends StatelessWidget {
             margin: const EdgeInsets.only(left: 6),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: isActive ? cs.primary.withOpacity(0.18) : cs.surfaceContainerHigh,
+              color: isActive ? cs.primary.withValues(alpha: 0.18) : cs.surfaceContainerHigh,
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: isActive ? cs.primary : Colors.transparent,
@@ -1477,7 +1477,7 @@ class _TtlSelector extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: isActive ? cs.primary : cs.onSurface.withOpacity(0.6),
+                color: isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.6),
               ),
             ),
           ),
@@ -1554,17 +1554,17 @@ class _CapButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: onTap == null
-              ? cs.surfaceContainerHigh.withOpacity(0.5)
-              : cs.primary.withOpacity(0.15),
+              ? cs.surfaceContainerHigh.withValues(alpha: 0.5)
+              : cs.primary.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: onTap == null ? Colors.transparent : cs.primary.withOpacity(0.4),
+            color: onTap == null ? Colors.transparent : cs.primary.withValues(alpha: 0.4),
           ),
         ),
         child: Icon(icon,
             size: 16,
             color: onTap == null
-                ? cs.onSurface.withOpacity(0.25)
+                ? cs.onSurface.withValues(alpha: 0.25)
                 : cs.primary),
       ),
     );
@@ -1630,7 +1630,7 @@ class _GmailCardState extends ConsumerState<_GmailCard> {
                     const SizedBox(width: 5),
                     Text(_email,
                         style: TextStyle(
-                            fontSize: 11, color: cs.onSurface.withOpacity(0.6))),
+                            fontSize: 11, color: cs.onSurface.withValues(alpha: 0.6))),
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: _disconnect,
@@ -1680,9 +1680,9 @@ class _UpdateBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: cs.primaryContainer.withOpacity(0.35),
+        color: cs.primaryContainer.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.primary.withOpacity(0.4)),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
@@ -1750,7 +1750,7 @@ class _AboutCard extends ConsumerWidget {
                 update.hasUpdate ? 'Update available' : 'Check for updates',
                 style: TextStyle(
                   fontSize: 12,
-                  color: update.hasUpdate ? cs.primary : cs.onSurface.withOpacity(0.5),
+                  color: update.hasUpdate ? cs.primary : cs.onSurface.withValues(alpha: 0.5),
                   decoration: TextDecoration.underline,
                 ),
               ),

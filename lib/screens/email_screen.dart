@@ -93,14 +93,14 @@ class _SetupViewState extends ConsumerState<_SetupView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-          Icon(Icons.mail_outline, size: 48, color: cs.primary.withOpacity(0.5)),
+          Icon(Icons.mail_outline, size: 48, color: cs.primary.withValues(alpha: 0.5)),
           const SizedBox(height: 20),
           Text('Gmail', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Text(
             'Sign in with your Google account to read and manage your inbox.',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.55)),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.55)),
           ),
           const SizedBox(height: 28),
           if (widget.error != null)
@@ -143,10 +143,10 @@ class _InboxView extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.inbox_outlined, size: 48, color: cs.primary.withOpacity(0.4)),
+            Icon(Icons.inbox_outlined, size: 48, color: cs.primary.withValues(alpha: 0.4)),
             const SizedBox(height: 12),
             Text('Inbox empty',
-                style: TextStyle(color: cs.onSurface.withOpacity(0.5))),
+                style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5))),
           ],
         ),
       );
@@ -173,13 +173,13 @@ class _ThreadTile extends ConsumerWidget {
     final isUnread = thread.isUnread;
 
     return ListTile(
-      tileColor: isUnread ? cs.primary.withOpacity(0.08) : null,
+      tileColor: isUnread ? cs.primary.withValues(alpha: 0.08) : null,
       leading: Stack(
         alignment: Alignment.topRight,
         children: [
           CircleAvatar(
             backgroundColor: isUnread
-                ? cs.primary.withOpacity(0.25)
+                ? cs.primary.withValues(alpha: 0.25)
                 : cs.surfaceContainerHigh,
             radius: 20,
             child: Text(
@@ -187,7 +187,7 @@ class _ThreadTile extends ConsumerWidget {
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: isUnread ? cs.primary : cs.onSurface.withOpacity(0.7)),
+                  color: isUnread ? cs.primary : cs.onSurface.withValues(alpha: 0.7)),
             ),
           ),
           if (isUnread)
@@ -220,7 +220,7 @@ class _ThreadTile extends ConsumerWidget {
             _dateLabel(thread.date),
             style: TextStyle(
                 fontSize: 11,
-                color: isUnread ? cs.primary : cs.onSurface.withOpacity(0.4),
+                color: isUnread ? cs.primary : cs.onSurface.withValues(alpha: 0.4),
                 fontWeight: isUnread ? FontWeight.w700 : FontWeight.normal),
           ),
         ],
@@ -233,7 +233,7 @@ class _ThreadTile extends ConsumerWidget {
             thread.subject.isEmpty ? '(no subject)' : thread.subject,
             style: TextStyle(
                 fontSize: 13,
-                color: isUnread ? cs.onSurface : cs.onSurface.withOpacity(0.8),
+                color: isUnread ? cs.onSurface : cs.onSurface.withValues(alpha: 0.8),
                 fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -241,7 +241,7 @@ class _ThreadTile extends ConsumerWidget {
           Text(
             thread.snippet,
             style: TextStyle(
-                fontSize: 12, color: cs.onSurface.withOpacity(0.45)),
+                fontSize: 12, color: cs.onSurface.withValues(alpha: 0.45)),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -539,9 +539,9 @@ class _AiCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: cs.primary.withOpacity(0.08),
+        color: cs.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.primary.withOpacity(0.25)),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -598,7 +598,7 @@ class _MessageCard extends StatelessWidget {
               Text(
                 _fmt(message.date),
                 style: TextStyle(
-                    fontSize: 11, color: cs.onSurface.withOpacity(0.4)),
+                    fontSize: 11, color: cs.onSurface.withValues(alpha: 0.4)),
               ),
             ],
           ),
@@ -607,7 +607,7 @@ class _MessageCard extends StatelessWidget {
             message.body.trim(),
             style: TextStyle(
                 fontSize: 13,
-                color: cs.onSurface.withOpacity(0.85),
+                color: cs.onSurface.withValues(alpha: 0.85),
                 height: 1.5),
           ),
         ],

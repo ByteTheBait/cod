@@ -83,15 +83,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         baseUrl: config.active.baseUrl.isNotEmpty ? config.active.baseUrl : null,
       )) {
         accumulated += chunk;
-        sessions.updateStreaming(sessionId!, accumulated);
+        sessions.updateStreaming(sessionId, accumulated);
         _scrollToBottom();
       }
     } catch (e) {
       accumulated = '_Error: ${e}_';
-      sessions.updateStreaming(sessionId!, accumulated);
+      sessions.updateStreaming(sessionId, accumulated);
     }
 
-    await sessions.finalizeStreaming(sessionId!);
+    await sessions.finalizeStreaming(sessionId);
     setState(() => _streaming = false);
     _scrollToBottom();
   }
@@ -102,7 +102,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final config = ref.watch(configProvider);
     final active = sessState.active;
     final messages = active?.messages ?? [];
-    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       drawer: _SessionsDrawer(
@@ -228,12 +227,12 @@ class _EmptyChat extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.chat_bubble_outline, size: 48, color: cs.primary.withOpacity(0.4)),
+          Icon(Icons.chat_bubble_outline, size: 48, color: cs.primary.withValues(alpha: 0.4)),
           const SizedBox(height: 16),
           Text(
             'Cod',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: cs.onSurface.withOpacity(0.7),
+                  color: cs.onSurface.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.5,
                 ),
@@ -242,7 +241,7 @@ class _EmptyChat extends StatelessWidget {
           Text(
             '${config.active.name} · ${config.active.selectedModel}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: cs.onSurface.withOpacity(0.35),
+                  color: cs.onSurface.withValues(alpha: 0.35),
                 ),
           ),
         ],
@@ -304,7 +303,7 @@ class _SessionsDrawer extends ConsumerWidget {
                   if (sessState.sessions.isNotEmpty)
                     IconButton(
                       icon: Icon(Icons.delete_sweep_outlined,
-                          size: 18, color: cs.onSurface.withOpacity(0.5)),
+                          size: 18, color: cs.onSurface.withValues(alpha: 0.5)),
                       tooltip: 'Reset all sessions',
                       onPressed: () => _confirmReset(context, ref),
                     ),
@@ -327,7 +326,7 @@ class _SessionsDrawer extends ConsumerWidget {
                   ? Center(
                       child: Text(
                         'No sessions yet',
-                        style: TextStyle(color: cs.onSurface.withOpacity(0.4)),
+                        style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4)),
                       ),
                     )
                   : ListView.builder(
@@ -338,7 +337,7 @@ class _SessionsDrawer extends ConsumerWidget {
                         final isActive = s.id == sessState.activeId;
                         return ListTile(
                           selected: isActive,
-                          selectedTileColor: cs.primary.withOpacity(0.12),
+                          selectedTileColor: cs.primary.withValues(alpha: 0.12),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8)),
                           title: Text(
@@ -357,7 +356,7 @@ class _SessionsDrawer extends ConsumerWidget {
                           ),
                           trailing: IconButton(
                             icon: Icon(Icons.delete_outline,
-                                size: 18, color: cs.onSurface.withOpacity(0.4)),
+                                size: 18, color: cs.onSurface.withValues(alpha: 0.4)),
                             onPressed: () => ref
                                 .read(sessionsProvider.notifier)
                                 .delete(s.id),

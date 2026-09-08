@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/task.dart';
 import '../state/providers.dart';
-import '../widgets/skill_badge.dart';
 import '../widgets/task_tile.dart';
 import 'task_detail_screen.dart';
 
@@ -136,24 +135,24 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
                   duration: const Duration(milliseconds: 120),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isActive ? s.color.withOpacity(0.15) : cs.surfaceContainerHigh,
+                    color: isActive ? s.color.withValues(alpha: 0.15) : cs.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: isActive ? s.color.withOpacity(0.5) : Colors.transparent,
+                      color: isActive ? s.color.withValues(alpha: 0.5) : Colors.transparent,
                       width: 1.5,
                     ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(s.icon, size: 13, color: isActive ? s.color : cs.onSurface.withOpacity(0.5)),
+                      Icon(s.icon, size: 13, color: isActive ? s.color : cs.onSurface.withValues(alpha: 0.5)),
                       const SizedBox(width: 5),
                       Text(
                         s.label,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: isActive ? s.color : cs.onSurface.withOpacity(0.55),
+                          color: isActive ? s.color : cs.onSurface.withValues(alpha: 0.55),
                         ),
                       ),
                     ],
@@ -189,12 +188,12 @@ class _EmptyTasks extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.checklist_outlined, size: 48, color: cs.primary.withOpacity(0.4)),
+          Icon(Icons.checklist_outlined, size: 48, color: cs.primary.withValues(alpha: 0.4)),
           const SizedBox(height: 16),
           Text(
             'No tasks yet',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: cs.onSurface.withOpacity(0.55),
+                  color: cs.onSurface.withValues(alpha: 0.55),
                 ),
           ),
           const SizedBox(height: 8),

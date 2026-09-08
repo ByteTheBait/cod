@@ -22,14 +22,13 @@ class _FlatNode {
   final String path;
   final bool isDir;
   final int depth;
-  bool expanded;
+  bool expanded = false;
 
   _FlatNode({
     required this.name,
     required this.path,
     required this.isDir,
     required this.depth,
-    this.expanded = false,
   });
 }
 
@@ -121,7 +120,7 @@ class _FileTreeState extends State<FileTree> {
     if (widget.workingDir.isEmpty) {
       return Center(
         child: Text('No folder open',
-            style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.35))),
+            style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.35))),
       );
     }
 
@@ -132,7 +131,7 @@ class _FileTreeState extends State<FileTree> {
     if (_nodes.isEmpty) {
       return Center(
         child: Text('Empty folder',
-            style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.35))),
+            style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.35))),
       );
     }
 
@@ -151,12 +150,12 @@ class _FileTreeState extends State<FileTree> {
                 Icon(
                   _showHidden ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                   size: 12,
-                  color: cs.onSurface.withOpacity(0.3),
+                  color: cs.onSurface.withValues(alpha: 0.3),
                 ),
                 const SizedBox(width: 5),
                 Text(
                   _showHidden ? 'hide dotfiles' : 'show dotfiles',
-                  style: TextStyle(fontSize: 10, color: cs.onSurface.withOpacity(0.3)),
+                  style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: 0.3)),
                 ),
               ],
             ),
@@ -207,7 +206,7 @@ class _NodeTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        color: isSelected ? cs.primary.withOpacity(0.18) : Colors.transparent,
+        color: isSelected ? cs.primary.withValues(alpha: 0.18) : Colors.transparent,
         padding: EdgeInsets.only(left: indent, right: 8),
         alignment: Alignment.centerLeft,
         child: Row(
@@ -217,7 +216,7 @@ class _NodeTile extends StatelessWidget {
               Icon(
                 node.expanded ? Icons.arrow_drop_down : Icons.arrow_right,
                 size: 16,
-                color: cs.onSurface.withOpacity(0.5),
+                color: cs.onSurface.withValues(alpha: 0.5),
               )
             else
               const SizedBox(width: 16),
@@ -233,7 +232,7 @@ class _NodeTile extends StatelessWidget {
                   fontSize: 12.5,
                   color: isSelected
                       ? cs.primary
-                      : cs.onSurface.withOpacity(node.isDir ? 0.9 : 0.8),
+                      : cs.onSurface.withValues(alpha: node.isDir ? 0.9 : 0.8),
                   fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
                 ),
                 overflow: TextOverflow.ellipsis,

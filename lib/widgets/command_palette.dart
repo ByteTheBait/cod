@@ -99,7 +99,7 @@ class _CommandPaletteDialogState extends State<_CommandPaletteDialog> {
                       padding: const EdgeInsets.all(24),
                       child: Text('No commands match "$_query"',
                           style: TextStyle(
-                              color: cs.onSurface.withOpacity(0.5))),
+                              color: cs.onSurface.withValues(alpha: 0.5))),
                     )
                   : ListView.builder(
                       shrinkWrap: true,
@@ -115,14 +115,14 @@ class _CommandPaletteDialogState extends State<_CommandPaletteDialog> {
                               : Text(cmd.subtitle!,
                                   style: TextStyle(
                                       fontSize: 11,
-                                      color: cs.onSurface.withOpacity(0.5))),
+                                      color: cs.onSurface.withValues(alpha: 0.5))),
                           trailing: cmd.shortcut == null
                               ? null
                               : Text(cmd.shortcut!,
                                   style: TextStyle(
                                       fontSize: 11,
                                       fontFamily: 'monospace',
-                                      color: cs.onSurface.withOpacity(0.4))),
+                                      color: cs.onSurface.withValues(alpha: 0.4))),
                           onTap: () {
                             Navigator.pop(context);
                             cmd.run();
@@ -160,7 +160,7 @@ class _ShortcutRecorderState extends State<ShortcutRecorder> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: _recording ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+          color: _recording ? cs.primary.withValues(alpha: 0.15) : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
               color: _recording ? cs.primary : Colors.transparent, width: 1.5),
@@ -186,7 +186,7 @@ class _ShortcutRecorderState extends State<ShortcutRecorder> {
                 style: TextStyle(
                     fontSize: 12,
                     fontFamily: 'monospace',
-                    color: cs.onSurface.withOpacity(0.8))),
+                    color: cs.onSurface.withValues(alpha: 0.8))),
       ),
     );
   }

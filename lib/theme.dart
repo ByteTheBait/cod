@@ -46,7 +46,7 @@ class CodTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: _bg,
-        indicatorColor: _seed.withOpacity(0.25),
+        indicatorColor: _seed.withValues(alpha: 0.25),
         labelTextStyle: WidgetStateProperty.all(
           GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500),
         ),

@@ -207,7 +207,7 @@ class SkillDef {
 
   static SkillDef of(TaskSkill skill) => _defs[skill]!;
 
-  static late final _defs = {
+  static final _defs = {
     TaskSkill.general: SkillDef(
       tools: AgentService.taskTools,
       system: 'You are an autonomous task-completion agent. '
