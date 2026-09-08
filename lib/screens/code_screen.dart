@@ -6,13 +6,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:highlight/highlight.dart' show highlight, Node;
+import '../models/command.dart';
 import '../models/config.dart';
+import '../models/subagent.dart';
 import '../models/tool.dart';
 import '../services/agent_service.dart';
 import '../services/sandbox_service.dart';
 import '../state/code.dart';
 import '../state/providers.dart';
 import '../widgets/ai_input_field.dart';
+import '../widgets/command_palette.dart';
 import '../widgets/file_tree.dart';
 import '../widgets/provider_badge.dart';
 
@@ -29,6 +32,60 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
   double _sidebarWidth = 220;
   StreamSubscription<AgentEvent>? _agentSub;
   bool _inStreamingCommand = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _registerCommands();
+  }
+
+  void _registerCommands() {
+    final reg = CommandRegistry.instance;
+    reg.register(Command(
+      id: 'new_session',
+      title: 'New code session',
+      icon: Icons.add,
+      shortcut: 'cmd+n',
+      run: () => ref.read(codeProvider.notifier).newSession(),
+    ));
+    reg.register(Command(
+      id: 'run_agent',
+      title: 'Run agent',
+      icon: Icons.play_arrow,
+      shortcut: 'cmd+enter',
+      run: () {
+        if (!ref.read(codeProvider).isRunning) _send();
+      },
+    ));
+    reg.register(Command(
+      id: 'open_folder',
+      title: 'Open folder',
+      icon: Icons.folder_open_outlined,
+      shortcut: 'cmd+o',
+      run: _showFolderMenu,
+    ));
+    reg.register(Command(
+      id: 'clear_conversation',
+      title: 'Clear conversation',
+      icon: Icons.delete_outline,
+      shortcut: 'cmd+shift+backspace',
+      run: () => ref.read(codeProvider.notifier).clearConversation(),
+    ));
+    reg.register(Command(
+      id: 'compact_context',
+      title: 'Compact context',
+      icon: Icons.compress,
+      subtitle: 'Trim the conversation to the most recent messages',
+      run: () => ref.read(codeProvider.notifier).compactHistory(),
+    ));
+    reg.register(Command(
+      id: 'new_workspace',
+      title: 'New code tab',
+      icon: Icons.add_box_outlined,
+      subtitle: 'Open a fresh, independent code workspace',
+      run: () => ref.read(codeProvider.notifier).newWorkspace(),
+    ));
+  }
 
   @override
   void dispose() {
@@ -66,6 +123,36 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
     }
   }
 
+  /// Show a menu of quick ways to open a folder: recent folders, paste a
+  /// path, or browse with the native picker.
+  void _showFolderMenu() {
+    final recent = ref.read(codeProvider).recentFolders;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _FolderMenuSheet(
+        recentFolders: recent,
+        onBrowse: () {
+          Navigator.pop(ctx);
+          _pickFolder();
+        },
+        onOpenPath: (path) async {
+          Navigator.pop(ctx);
+          final resolved =
+              await ref.read(codeProvider.notifier).setWorkingDirFromPath(path);
+          if (resolved == null) {
+            _showSnack('Could not open folder: "$path"');
+          }
+        },
+        onRemoveRecent: (dir) =>
+            ref.read(codeProvider.notifier).removeRecentFolder(dir),
+      ),
+    );
+  }
+
   Future<void> _send() async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || ref.read(codeProvider).isRunning) return;
@@ -82,32 +169,35 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
 
     final notifier = ref.read(codeProvider.notifier);
     final workingDir = ref.read(codeProvider).workingDir;
+    final mode = ref.read(codeProvider).mode;
+    final subAgentId = ref.read(codeProvider).subAgentId;
     notifier.addEntry(CodeEntry.user(text));
     notifier.setRunning(true);
     _scrollToBottom();
 
-    final system = workingDir.isNotEmpty
-        ? 'You are an expert coding assistant with access to file system and shell tools.\n'
-          'Working directory: $workingDir\n'
-          'Be concise. Always read a file with read_file before modifying it. '
-          'When editing existing files use str_replace_file — it is safer and only changes what you intend. '
-          'Only use write_file to create brand-new files. '
-          'For several related edits across files, use multi_edit in a single call. '
-          'Use background_start for long-running commands (servers, watchers, builds) and poll with background_status.'
-        : 'You are an expert coding assistant. Be concise and think step-by-step. '
-          'When editing existing files use str_replace_file. Only use write_file for new files. '
-          'For several related edits across files, use multi_edit in a single call.';
+    // If a subagent is active, use its system prompt and tool set.
+    final SubAgent? subAgent =
+        subAgentId == null ? null : config.subAgentById(subAgentId);
+    final system = subAgent != null
+        ? _subAgentSystemPrompt(workingDir, subAgent)
+        : _systemPrompt(workingDir, mode);
+
+    // Restrict tools based on mode (or the subagent's tool set).
+    final tools =
+        subAgent != null ? AgentService.toolsFor(subAgent) : _toolsFor(mode);
 
     final history = ref.read(codeProvider).history;
     final service = AgentService();
     _inStreamingCommand = false;
 
-    _agentSub = service.run(
+    _agentSub = service
+        .run(
       initialPrompt: text,
-      tools: AgentService.codeTools,
+      tools: tools,
       model: config.modelFor(Feature.code),
       apiKey: config.active.apiKey,
       providerId: config.activeProviderId,
+      protocol: config.active.protocol,
       baseUrl: config.active.baseUrl,
       system: system,
       workingDir: workingDir.isNotEmpty ? workingDir : null,
@@ -117,13 +207,20 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
           ref.read(codeProvider.notifier).updateHistory(msgs),
       commandRunner: ref.read(codeProvider.notifier).commandRunner,
       commandStreamRunner: ref.read(codeProvider.notifier).commandStreamRunner,
-    ).listen(
+      onToolApprove: mode.requiresApproval ? _approveTool : null,
+      delegateRunner: (subagentRef, task) =>
+          _runDelegated(subagentRef, task, config, workingDir),
+      parallelDelegateRunner: (delegations) =>
+          _runDelegatedParallel(delegations, config, workingDir),
+    )
+        .listen(
       (event) {
         switch (event) {
           case AgentText(:final text):
             if (text.isNotEmpty) notifier.addEntry(CodeEntry.assistant(text));
           case AgentToolStart(:final call):
-            notifier.addEntry(CodeEntry.toolCall(call.name, _summarise(call.input)));
+            notifier.addEntry(
+                CodeEntry.toolCall(call.name, _summarise(call.input)));
             _inStreamingCommand = call.name == 'run_command';
           case AgentCommandOutput(:final line):
             notifier.appendCommandOutput(line);
@@ -155,10 +252,233 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
     );
   }
 
+  String _systemPrompt(String workingDir, CodeMode mode) {
+    final modeClause = switch (mode) {
+      CodeMode.yolo =>
+        'Fully autonomous mode: carry out the request end-to-end '
+            'without asking the user. Use tools as needed.',
+      CodeMode.ask =>
+        'Every tool call must be approved by the user. The UI will '
+            'pause and ask before running each tool — you do NOT need to ask in '
+            'text. Just propose the next tool and the system will confirm.',
+      CodeMode.plan => 'Work in a plan-first way. Present a clear, numbered plan '
+          'before executing. The UI will pause for approval before each tool, so '
+          'do not ask in text — just propose the next step and the system will '
+          'confirm. Do one step at a time.',
+      CodeMode.edit => 'File editing mode only. You may read, search, and edit '
+          'files, but you cannot run shell commands or access the web.',
+    };
+
+    final base = workingDir.isNotEmpty
+        ? 'You are an expert coding assistant with access to file system and shell tools.\n'
+            'Working directory: $workingDir\n'
+            'Be concise. Always read a file with read_file before modifying it. '
+            'When editing existing files use str_replace_file — it is safer and only changes what you intend. '
+            'Only use write_file to create brand-new files. '
+            'For several related edits across files, use multi_edit in a single call. '
+            'Use background_start for long-running commands (servers, watchers, builds) and poll with background_status.'
+        : 'You are an expert coding assistant. Be concise and think step-by-step. '
+            'When editing existing files use str_replace_file. Only use write_file for new files. '
+            'For several related edits across files, use multi_edit in a single call.';
+
+    return '$base\n$modeClause';
+  }
+
+  String _subAgentSystemPrompt(String workingDir, SubAgent agent) {
+    final base = workingDir.isNotEmpty
+        ? 'You are an expert coding assistant with access to file system and shell tools.\n'
+            'Working directory: $workingDir\n'
+            'Be concise. Always read a file with read_file before modifying it. '
+            'When editing existing files use str_replace_file — it is safer and only changes what you intend. '
+            'Only use write_file to create brand-new files. '
+            'For several related edits across files, use multi_edit in a single call. '
+            'Use background_start for long-running commands (servers, watchers, builds) and poll with background_status.'
+        : 'You are an expert coding assistant. Be concise and think step-by-step. '
+            'When editing existing files use str_replace_file. Only use write_file for new files. '
+            'For several related edits across files, use multi_edit in a single call.';
+    return '$base\n${agent.systemPrompt}';
+  }
+
+  /// Run a sub-agent to completion and return its final summary. Used by the
+  /// main agent's `delegate` tool. The sub-agent uses its own model, system
+  /// prompt, and tool set, and streams its progress into the conversation.
+  Future<String> _runDelegated(
+    String subagentRef,
+    String task,
+    AppConfig config,
+    String workingDir,
+  ) async {
+    // Resolve the sub-agent by id or name.
+    SubAgent? agent;
+    for (final a in config.subAgents) {
+      if (a.id == subagentRef ||
+          a.name.toLowerCase() == subagentRef.toLowerCase()) {
+        agent = a;
+        break;
+      }
+    }
+    if (agent == null) {
+      return 'Unknown sub-agent: "$subagentRef". Available: '
+          '${config.subAgents.map((a) => a.name).join(', ')}.';
+    }
+
+    final notifier = ref.read(codeProvider.notifier);
+    notifier.addEntry(CodeEntry.toolCall('delegate', '${agent.name} ← $task'));
+
+    final service = AgentService();
+    final system = _subAgentSystemPrompt(workingDir, agent);
+    final tools = AgentService.toolsFor(agent);
+    final model = config.modelForSubAgent(agent);
+
+    final summary = StringBuffer();
+    var runningText = '';
+    var toolEntryActive = false;
+
+    void flushText() {
+      if (runningText.trim().isNotEmpty) {
+        notifier.addEntry(CodeEntry.assistant(runningText.trim()));
+        runningText = '';
+      }
+    }
+
+    await for (final event in service.run(
+      initialPrompt: task,
+      tools: tools,
+      model: model,
+      apiKey: config.active.apiKey,
+      providerId: config.activeProviderId,
+      protocol: config.active.protocol,
+      baseUrl: config.active.baseUrl,
+      system: system,
+      workingDir: workingDir.isNotEmpty ? workingDir : null,
+      maxIterations: config.agentMaxIterations,
+      commandRunner: notifier.commandRunner,
+      commandStreamRunner: notifier.commandStreamRunner,
+    )) {
+      switch (event) {
+        case AgentText(:final text):
+          if (text.isNotEmpty) {
+            runningText += text + '\n';
+            summary.writeln(text);
+          }
+        case AgentToolStart(:final call):
+          flushText();
+          if (!toolEntryActive) {
+            notifier.addEntry(CodeEntry.toolCall(
+                'delegate', '${agent.name} running ${call.name}'));
+            toolEntryActive = true;
+          }
+        case AgentCommandOutput():
+          break;
+        case AgentToolDone(:final toolName, :final result):
+          flushText();
+          if (toolName == 'mark_complete') {
+            summary.writeln(result);
+          }
+        case AgentComplete():
+          break;
+        case AgentError(:final message):
+          flushText();
+          summary.writeln('Error: $message');
+      }
+    }
+    flushText();
+
+    final result = summary.toString().trim();
+    notifier.addEntry(CodeEntry.toolResult(
+        'delegate', result.isEmpty ? '(no output)' : result));
+    return result.isEmpty ? '(no output)' : result;
+  }
+
+  /// Run several sub-agents concurrently and combine their summaries.
+  Future<String> _runDelegatedParallel(
+    List<(String, String)> delegations,
+    AppConfig config,
+    String workingDir,
+  ) async {
+    if (delegations.isEmpty) return 'No delegations provided.';
+
+    final notifier = ref.read(codeProvider.notifier);
+    notifier.addEntry(CodeEntry.toolCall(
+        'delegate_parallel', '${delegations.length} sub-agents in parallel'));
+
+    // Run all delegations concurrently.
+    final futures = delegations.map((d) async {
+      final (subagentRef, task) = d;
+      return _runDelegated(subagentRef, task, config, workingDir);
+    }).toList();
+
+    final results = await Future.wait(futures);
+
+    final buf = StringBuffer();
+    for (var i = 0; i < delegations.length; i++) {
+      buf.writeln('### ${delegations[i].$1}');
+      buf.writeln(results[i]);
+      buf.writeln();
+    }
+    final combined = buf.toString().trim();
+    notifier.addEntry(CodeEntry.toolResult(
+        'delegate_parallel', combined.isEmpty ? '(no output)' : combined));
+    return combined.isEmpty ? '(no output)' : combined;
+  }
+
+  List<Tool> _toolsFor(CodeMode mode) {
+    if (!mode.editOnly) return AgentService.codeTools;
+    const allowed = {
+      'read_file',
+      'str_replace_file',
+      'multi_edit',
+      'write_file',
+      'list_directory',
+      'search_files',
+      'create_directory',
+    };
+    return AgentService.codeTools
+        .where((t) => allowed.contains(t.name))
+        .toList();
+  }
+
+  static const _shellTools = {
+    'run_command',
+    'background_start',
+    'background_status',
+    'background_list',
+    'background_kill',
+  };
+
+  Future<bool> _approveTool(ToolCall call) async {
+    if (!mounted) return false;
+    final mode = ref.read(codeProvider).mode;
+
+    // In plan mode, only require confirmation for state-changing / shell tools.
+    // Read-only tools are harmless and run automatically to keep the plan flowing.
+    if (mode == CodeMode.plan && !_isStateChanging(call)) return true;
+
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _ApproveToolDialog(call: call, mode: mode),
+    );
+    return approved ?? false;
+  }
+
+  static bool _isStateChanging(ToolCall call) {
+    if (_shellTools.contains(call.name)) return true;
+    return switch (call.name) {
+      'str_replace_file' ||
+      'multi_edit' ||
+      'write_file' ||
+      'create_directory' =>
+        true,
+      _ => false,
+    };
+  }
+
   String _summarise(Map<String, dynamic> input) {
     if (input.containsKey('path')) return '"${input['path']}"';
     if (input.containsKey('command')) return '"${input['command']}"';
-    if (input.containsKey('pattern')) return '"${input['pattern']}" in ${input['directory'] ?? '.'}';
+    if (input.containsKey('pattern'))
+      return '"${input['pattern']}" in ${input['directory'] ?? '.'}';
     if (input.containsKey('edits')) {
       final edits = input['edits'] as List;
       return '${edits.length} edit(s) across ${edits.map((e) => (e as Map)['path']).toSet().length} file(s)';
@@ -180,8 +500,9 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
       appBar: AppBar(
         title: const Text('Code'),
         actions: [
-          if (codeState.workingDir.isNotEmpty)
-            _SessionMenu(state: codeState),
+          _SubAgentMenu(state: codeState, subAgents: config.subAgents),
+          _ModeMenu(state: codeState),
+          if (codeState.workingDir.isNotEmpty) _SessionMenu(state: codeState),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ProviderBadge(
@@ -192,7 +513,8 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
           IconButton(
             icon: const Icon(Icons.delete_outline, size: 20),
             tooltip: 'Clear conversation',
-            onPressed: () => ref.read(codeProvider.notifier).clearConversation(),
+            onPressed: () =>
+                ref.read(codeProvider.notifier).clearConversation(),
           ),
         ],
       ),
@@ -212,7 +534,7 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
                     selectedPath: codeState.activeFileIndex != null
                         ? codeState.openFiles[codeState.activeFileIndex!].path
                         : null,
-                    onPickFolder: _pickFolder,
+                    onPickFolder: _showFolderMenu,
                     onFileTap: (path) =>
                         ref.read(codeProvider.notifier).openFile(path),
                   ),
@@ -235,6 +557,7 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
                 Expanded(
                   child: Column(
                     children: [
+                      _WorkspaceBar(state: codeState),
                       _TabBar(state: codeState),
                       Expanded(
                         child: codeState.activeFileIndex == null
@@ -310,7 +633,9 @@ class _SessionMenu extends ConsumerWidget {
             child: Row(
               children: [
                 Icon(
-                  isActive ? Icons.radio_button_checked : Icons.radio_button_off,
+                  isActive
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
                   size: 16,
                   color: isActive ? cs.primary : cs.onSurface.withOpacity(0.4),
                 ),
@@ -322,7 +647,8 @@ class _SessionMenu extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight:
+                          isActive ? FontWeight.w600 : FontWeight.normal,
                     ),
                   ),
                 ),
@@ -352,6 +678,336 @@ class _SessionMenu extends ConsumerWidget {
   }
 }
 
+// ── Sub-agent menu ───────────────────────────────────────────────────────────
+
+class _SubAgentMenu extends ConsumerWidget {
+  final CodeState state;
+  final List<SubAgent> subAgents;
+  const _SubAgentMenu({required this.state, required this.subAgents});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final activeId = state.subAgentId;
+    final active = activeId == null
+        ? null
+        : subAgents.where((a) => a.id == activeId).firstOrNull;
+
+    return PopupMenuButton<String?>(
+      tooltip: 'Sub-agent',
+      onSelected: (id) => ref.read(codeProvider.notifier).setSubAgent(id),
+      itemBuilder: (ctx) => [
+        PopupMenuItem<String?>(
+          value: null,
+          child: Row(
+            children: [
+              Icon(Icons.smart_toy_outlined,
+                  size: 18,
+                  color: activeId == null
+                      ? cs.primary
+                      : cs.onSurface.withOpacity(0.6)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Full agent',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: activeId == null
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: activeId == null ? cs.primary : cs.onSurface,
+                        )),
+                    const SizedBox(height: 1),
+                    Text('All tools — files, shell, and web.',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurface.withOpacity(0.5))),
+                  ],
+                ),
+              ),
+              if (activeId == null)
+                Icon(Icons.check, size: 15, color: cs.primary),
+            ],
+          ),
+        ),
+        if (subAgents.isNotEmpty) const PopupMenuDivider(),
+        for (final a in subAgents)
+          PopupMenuItem<String?>(
+            value: a.id,
+            child: Row(
+              children: [
+                Icon(a.iconData,
+                    size: 18,
+                    color: a.id == activeId
+                        ? cs.primary
+                        : cs.onSurface.withOpacity(0.6)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(a.name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: a.id == activeId
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: a.id == activeId ? cs.primary : cs.onSurface,
+                          )),
+                      const SizedBox(height: 1),
+                      Text(a.description,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurface.withOpacity(0.5)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+                if (a.id == activeId)
+                  Icon(Icons.check, size: 15, color: cs.primary),
+              ],
+            ),
+          ),
+      ],
+      child: Container(
+        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: active != null
+              ? active.icon == SubAgentIcons.explore
+                  ? Colors.teal.withOpacity(0.12)
+                  : cs.primary.withOpacity(0.12)
+              : cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(active?.iconData ?? Icons.smart_toy_outlined,
+                size: 13,
+                color: active != null
+                    ? cs.primary
+                    : cs.onSurface.withOpacity(0.6)),
+            const SizedBox(width: 5),
+            Text(
+              active?.name ?? 'Agent',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+                color:
+                    active != null ? cs.primary : cs.onSurface.withOpacity(0.6),
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(Icons.arrow_drop_down,
+                size: 14,
+                color: (active != null
+                        ? cs.primary
+                        : cs.onSurface.withOpacity(0.6))
+                    .withOpacity(0.7)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Mode menu ────────────────────────────────────────────────────────────────
+
+class _ModeMenu extends ConsumerWidget {
+  final CodeState state;
+  const _ModeMenu({required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final mode = state.mode;
+
+    return PopupMenuButton<CodeMode>(
+      tooltip: 'Agent mode',
+      onSelected: (m) => ref.read(codeProvider.notifier).setMode(m),
+      itemBuilder: (ctx) => [
+        for (final m in CodeMode.values)
+          PopupMenuItem<CodeMode>(
+            value: m,
+            child: Row(
+              children: [
+                Icon(m.icon,
+                    size: 18,
+                    color:
+                        m == mode ? cs.primary : cs.onSurface.withOpacity(0.6)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(m.label,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight:
+                                m == mode ? FontWeight.w700 : FontWeight.w500,
+                            color: m == mode ? cs.primary : cs.onSurface,
+                          )),
+                      const SizedBox(height: 1),
+                      Text(m.description,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurface.withOpacity(0.5))),
+                    ],
+                  ),
+                ),
+                if (m == mode) Icon(Icons.check, size: 15, color: cs.primary),
+              ],
+            ),
+          ),
+      ],
+      child: Container(
+        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: mode == CodeMode.ask || mode == CodeMode.plan
+              ? Colors.amber.withOpacity(0.12)
+              : mode == CodeMode.edit
+                  ? cs.primary.withOpacity(0.12)
+                  : cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(mode.icon,
+                size: 13,
+                color: mode == CodeMode.ask || mode == CodeMode.plan
+                    ? Colors.amber.shade400
+                    : cs.primary),
+            const SizedBox(width: 5),
+            Text(
+              mode.label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+                color: mode == CodeMode.ask || mode == CodeMode.plan
+                    ? Colors.amber.shade400
+                    : cs.primary,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(Icons.arrow_drop_down,
+                size: 14,
+                color: (mode == CodeMode.ask || mode == CodeMode.plan
+                        ? Colors.amber.shade400
+                        : cs.primary)
+                    .withOpacity(0.7)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Tool approval dialog ─────────────────────────────────────────────────────
+
+class _ApproveToolDialog extends StatelessWidget {
+  final ToolCall call;
+  final CodeMode mode;
+  const _ApproveToolDialog({required this.call, required this.mode});
+
+  String get _title => 'Approve ${call.name}?';
+  String get _command => call.input['command'] as String? ?? '';
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AlertDialog(
+      backgroundColor: Colors.grey.shade900.withOpacity(0.98),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Row(
+        children: [
+          const Icon(Icons.help_outline, color: Color(0xFF3B82F6), size: 22),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(_title,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'The agent wants to run the **${call.name}** tool. Review the '
+            'arguments before allowing it.',
+            style:
+                TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.8)),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SelectableText(
+              _command.isNotEmpty ? _command : _prettifyInput(call.input),
+              style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  color: Color(0xFF98C379)),
+            ),
+          ),
+          if (mode == CodeMode.plan) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Plan mode: read-only tools run automatically; state-changing '
+              'and shell tools require approval.',
+              style:
+                  TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5)),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: Text('Decline', style: TextStyle(color: cs.error)),
+        ),
+        const Spacer(),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: cs.primary,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          ),
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Allow'),
+        ),
+      ],
+    );
+  }
+
+  String _prettifyInput(Map<String, dynamic> input) {
+    if (input.containsKey('old_string') || input.containsKey('new_string')) {
+      final path = input['path'];
+      final oldLen = (input['old_string'] as String?)?.length ?? 0;
+      final newLen = (input['new_string'] as String?)?.length ?? 0;
+      return '$path  ·  $oldLen → $newLen chars';
+    }
+    if (input.containsKey('edits')) {
+      final edits = input['edits'] as List;
+      return '${edits.length} edit(s) across '
+          '${edits.map((e) => (e as Map)['path']).toSet().length} file(s)';
+    }
+    return input.entries.map((e) => '${e.key}: ${e.value}').join('\n');
+  }
+}
+
 // ── File explorer panel ───────────────────────────────────────────────────────
 
 class _FilePanel extends StatelessWidget {
@@ -370,9 +1026,8 @@ class _FilePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final folderName = workingDir.isEmpty
-        ? 'No folder'
-        : workingDir.split('/').last;
+    final folderName =
+        workingDir.isEmpty ? 'No folder' : workingDir.split('/').last;
 
     return Container(
       color: cs.surfaceContainerLow,
@@ -420,6 +1075,258 @@ class _FilePanel extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Folder open menu ─────────────────────────────────────────────────────────
+
+class _FolderMenuSheet extends StatefulWidget {
+  final List<String> recentFolders;
+  final VoidCallback onBrowse;
+  final Future<void> Function(String path) onOpenPath;
+  final void Function(String dir) onRemoveRecent;
+
+  const _FolderMenuSheet({
+    required this.recentFolders,
+    required this.onBrowse,
+    required this.onOpenPath,
+    required this.onRemoveRecent,
+  });
+
+  @override
+  State<_FolderMenuSheet> createState() => _FolderMenuSheetState();
+}
+
+class _FolderMenuSheetState extends State<_FolderMenuSheet> {
+  final _pathCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _pathCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Open folder',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 16),
+          // Paste a path
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _pathCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Paste a path, e.g. ~/projects/app',
+                    prefixIcon: Icon(Icons.link, size: 18),
+                  ),
+                  onSubmitted: (v) {
+                    if (v.trim().isNotEmpty) widget.onOpenPath(v.trim());
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: () {
+                  final v = _pathCtrl.text.trim();
+                  if (v.isNotEmpty) widget.onOpenPath(v);
+                },
+                style: FilledButton.styleFrom(backgroundColor: cs.primary),
+                child: const Text('Open'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Supports ~, relative paths, and absolute paths.',
+            style:
+                TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.45)),
+          ),
+          const SizedBox(height: 16),
+          // Browse
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.folder_open_outlined, color: cs.primary),
+            title: const Text('Browse…', style: TextStyle(fontSize: 14)),
+            subtitle: Text('Use the native folder picker',
+                style: TextStyle(
+                    fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
+            onTap: widget.onBrowse,
+          ),
+          if (widget.recentFolders.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            Text('Recent',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: cs.onSurface.withOpacity(0.45))),
+            const SizedBox(height: 4),
+            ...widget.recentFolders.map((dir) {
+              final name = dir.split('/').last;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                leading: Icon(Icons.folder_outlined,
+                    size: 18, color: cs.primary.withOpacity(0.7)),
+                title: Text(name,
+                    style: const TextStyle(fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                subtitle: Text(dir,
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontFamily: 'monospace',
+                        color: cs.onSurface.withOpacity(0.4)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                trailing: IconButton(
+                  icon: Icon(Icons.close,
+                      size: 14, color: cs.onSurface.withOpacity(0.35)),
+                  tooltip: 'Remove from recent',
+                  onPressed: () => widget.onRemoveRecent(dir),
+                ),
+                onTap: () => widget.onOpenPath(dir),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Workspace bar (tabbed code) ─────────────────────────────────────────────
+
+class _WorkspaceBar extends ConsumerWidget {
+  final CodeState state;
+  const _WorkspaceBar({required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final notifier = ref.read(codeProvider.notifier);
+    final workspaces = state.workspaces;
+
+    return Container(
+      height: 34,
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        border: Border(bottom: BorderSide(color: cs.surfaceContainerHigh)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 6),
+          // Workspace tabs. If none exist yet, show a single tab for the
+          // current (unsaved) view so the bar is never empty.
+          Expanded(
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: workspaces.isEmpty
+                  ? [
+                      _WorkspaceTab(
+                        title: 'Code 1',
+                        isActive: true,
+                        onTap: () {},
+                        onClose: () {},
+                      ),
+                    ]
+                  : [
+                      for (final ws in workspaces)
+                        _WorkspaceTab(
+                          title: ws.title,
+                          isActive: ws.id == state.activeWorkspaceId,
+                          onTap: () => notifier.switchWorkspace(ws.id),
+                          onClose: () => notifier.closeWorkspace(ws.id),
+                        ),
+                    ],
+            ),
+          ),
+          // New workspace button
+          IconButton(
+            icon: Icon(Icons.add, size: 16, color: cs.primary),
+            tooltip: 'New code tab',
+            onPressed: notifier.newWorkspace,
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkspaceTab extends StatelessWidget {
+  final String title;
+  final bool isActive;
+  final VoidCallback onTap;
+  final VoidCallback onClose;
+
+  const _WorkspaceTab({
+    required this.title,
+    required this.isActive,
+    required this.onTap,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 160),
+        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: isActive ? cs.surface : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.code,
+                size: 12,
+                color: isActive ? cs.primary : cs.onSurface.withOpacity(0.45)),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  color:
+                      isActive ? cs.onSurface : cs.onSurface.withOpacity(0.5),
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onClose,
+              child: Icon(Icons.close,
+                  size: 12, color: cs.onSurface.withOpacity(0.4)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -507,18 +1414,15 @@ class _Tab extends StatelessWidget {
           children: [
             Icon(icon,
                 size: 12,
-                color: isActive
-                    ? cs.primary
-                    : cs.onSurface.withOpacity(0.45)),
+                color: isActive ? cs.primary : cs.onSurface.withOpacity(0.45)),
             const SizedBox(width: 5),
             Flexible(
               child: Text(
                 label,
                 style: TextStyle(
                   fontSize: 12,
-                  color: isActive
-                      ? cs.onSurface
-                      : cs.onSurface.withOpacity(0.5),
+                  color:
+                      isActive ? cs.onSurface : cs.onSurface.withOpacity(0.5),
                   fontWeight: isActive ? FontWeight.w500 : FontWeight.normal,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -552,17 +1456,34 @@ class _SandboxBar extends ConsumerWidget {
 
     final isDocker = state.sandboxType == SandboxType.docker;
     final (icon, label, color) = switch (state.containerStatus) {
-      ContainerStatus.idle =>
-        (Icons.circle_outlined,
-         isDocker ? 'Docker ready — set a folder to start container' : 'Restricted mode',
-         cs.onSurface.withOpacity(0.3)),
-      ContainerStatus.starting =>
-        (Icons.hourglass_empty, 'Starting container…', Colors.amber.shade400),
+      ContainerStatus.idle => (
+          Icons.circle_outlined,
+          isDocker
+              ? 'Docker ready — set a folder to start container'
+              : 'Restricted mode',
+          cs.onSurface.withOpacity(0.3)
+        ),
+      ContainerStatus.starting => (
+          Icons.hourglass_empty,
+          'Starting container…',
+          Colors.amber.shade400
+        ),
       ContainerStatus.running => isDocker
-          ? (Icons.circle, '🐳  ${state.sandboxImage}  ·  isolated', Colors.green.shade400)
-          : (Icons.shield_outlined, 'Restricted sandbox  ·  sanitised env', Colors.green.shade400),
-      ContainerStatus.error =>
-        (Icons.warning_amber_outlined, 'Sandbox error', cs.error),
+          ? (
+              Icons.circle,
+              '🐳  ${state.sandboxImage}  ·  isolated',
+              Colors.green.shade400
+            )
+          : (
+              Icons.shield_outlined,
+              'Restricted sandbox  ·  sanitized env',
+              Colors.green.shade400
+            ),
+      ContainerStatus.error => (
+          Icons.warning_amber_outlined,
+          'Sandbox error',
+          cs.error
+        ),
     };
 
     return Container(
@@ -574,7 +1495,9 @@ class _SandboxBar extends ConsumerWidget {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              state.sandboxError != null ? 'Error: ${state.sandboxError}' : label,
+              state.sandboxError != null
+                  ? 'Error: ${state.sandboxError}'
+                  : label,
               style: TextStyle(
                 fontSize: 11,
                 color: state.sandboxError != null ? cs.error : color,
@@ -591,7 +1514,54 @@ class _SandboxBar extends ConsumerWidget {
               child: Text('retry',
                   style: TextStyle(fontSize: 11, color: cs.primary)),
             ),
+          if (state.estimatedTokens > 0) ...[
+            const SizedBox(width: 12),
+            _ContextChip(tokens: state.estimatedTokens),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// A small chip showing the estimated context size. Tapping it compacts the
+/// conversation when it's getting large.
+class _ContextChip extends ConsumerWidget {
+  final int tokens;
+  const _ContextChip({required this.tokens});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final color = tokens > 100000
+        ? Colors.red.shade400
+        : tokens > 50000
+            ? Colors.amber.shade400
+            : cs.onSurface.withOpacity(0.4);
+    return GestureDetector(
+      onTap: () => ref.read(codeProvider.notifier).compactHistory(),
+      child: Tooltip(
+        message:
+            'Estimated context: ${tokens ~/ 1000}k tokens. Tap to compact.',
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.data_usage, size: 10, color: color),
+              const SizedBox(width: 3),
+              Text(
+                '${(tokens / 1000).toStringAsFixed(1)}k',
+                style: TextStyle(
+                    fontSize: 10, fontFamily: 'monospace', color: color),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -639,7 +1609,8 @@ class _EmptyAgent extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Icon(Icons.smart_toy_outlined, size: 36, color: cs.primary.withOpacity(0.35)),
+        Icon(Icons.smart_toy_outlined,
+            size: 36, color: cs.primary.withOpacity(0.35)),
         const SizedBox(height: 12),
         Text(
           workingDir.isNotEmpty ? workingDir.split('/').last : 'Code agent',
@@ -673,11 +1644,13 @@ class _SuggestionTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.arrow_forward, size: 13, color: cs.primary.withOpacity(0.5)),
+          Icon(Icons.arrow_forward,
+              size: 13, color: cs.primary.withOpacity(0.5)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(text,
-                style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.6))),
+                style: TextStyle(
+                    fontSize: 13, color: cs.onSurface.withOpacity(0.6))),
           ),
         ],
       ),
@@ -687,15 +1660,15 @@ class _SuggestionTile extends StatelessWidget {
 
 // ── File viewer panel (syntax highlighted) ───────────────────────────────────
 
-class _FileViewerPanel extends StatefulWidget {
+class _FileViewerPanel extends ConsumerStatefulWidget {
   final CodeFile file;
   const _FileViewerPanel({required this.file});
 
   @override
-  State<_FileViewerPanel> createState() => _FileViewerPanelState();
+  ConsumerState<_FileViewerPanel> createState() => _FileViewerPanelState();
 }
 
-class _FileViewerPanelState extends State<_FileViewerPanel> {
+class _FileViewerPanelState extends ConsumerState<_FileViewerPanel> {
   // Atom One Dark palette
   static const _bg = Color(0xFF282C34);
   static const _gutterBg = Color(0xFF21252B);
@@ -703,40 +1676,42 @@ class _FileViewerPanelState extends State<_FileViewerPanel> {
   static const _gutterColor = Color(0xFF4B5263);
 
   static const _theme = <String, TextStyle>{
-    'hljs-comment':       TextStyle(color: Color(0xFF5C6370), fontStyle: FontStyle.italic),
-    'hljs-quote':         TextStyle(color: Color(0xFF5C6370)),
-    'hljs-keyword':       TextStyle(color: Color(0xFFC678DD)),
-    'hljs-selector-tag':  TextStyle(color: Color(0xFFC678DD)),
-    'hljs-literal':       TextStyle(color: Color(0xFF56B6C2)),
-    'hljs-string':        TextStyle(color: Color(0xFF98C379)),
-    'hljs-addition':      TextStyle(color: Color(0xFF98C379)),
-    'hljs-number':        TextStyle(color: Color(0xFFD19A66)),
-    'hljs-variable':      TextStyle(color: Color(0xFFE06C75)),
+    'hljs-comment':
+        TextStyle(color: Color(0xFF5C6370), fontStyle: FontStyle.italic),
+    'hljs-quote': TextStyle(color: Color(0xFF5C6370)),
+    'hljs-keyword': TextStyle(color: Color(0xFFC678DD)),
+    'hljs-selector-tag': TextStyle(color: Color(0xFFC678DD)),
+    'hljs-literal': TextStyle(color: Color(0xFF56B6C2)),
+    'hljs-string': TextStyle(color: Color(0xFF98C379)),
+    'hljs-addition': TextStyle(color: Color(0xFF98C379)),
+    'hljs-number': TextStyle(color: Color(0xFFD19A66)),
+    'hljs-variable': TextStyle(color: Color(0xFFE06C75)),
     'hljs-template-variable': TextStyle(color: Color(0xFFE06C75)),
-    'hljs-deletion':      TextStyle(color: Color(0xFFE06C75)),
-    'hljs-name':          TextStyle(color: Color(0xFFE06C75)),
-    'hljs-tag':           TextStyle(color: Color(0xFFE06C75)),
-    'hljs-attr':          TextStyle(color: Color(0xFFD19A66)),
-    'hljs-attribute':     TextStyle(color: Color(0xFFD19A66)),
-    'hljs-type':          TextStyle(color: Color(0xFFE5C07B)),
-    'hljs-built_in':      TextStyle(color: Color(0xFFE5C07B)),
-    'hljs-class':         TextStyle(color: Color(0xFFE5C07B)),
-    'hljs-title':         TextStyle(color: Color(0xFF61AFEF)),
-    'hljs-function':      TextStyle(color: Color(0xFF61AFEF)),
-    'hljs-section':       TextStyle(color: Color(0xFF61AFEF)),
-    'hljs-operator':      TextStyle(color: Color(0xFF56B6C2)),
-    'hljs-property':      TextStyle(color: Color(0xFF56B6C2)),
-    'hljs-regexp':        TextStyle(color: Color(0xFF98C379)),
-    'hljs-symbol':        TextStyle(color: Color(0xFF56B6C2)),
-    'hljs-bullet':        TextStyle(color: Color(0xFFE06C75)),
-    'hljs-meta':          TextStyle(color: Color(0xFF5C6370)),
-    'hljs-link':          TextStyle(color: Color(0xFF56B6C2), decoration: TextDecoration.underline),
-    'hljs-emphasis':      TextStyle(fontStyle: FontStyle.italic),
-    'hljs-strong':        TextStyle(fontWeight: FontWeight.bold),
-    'hljs-params':        TextStyle(color: Color(0xFFABB2BF)),
-    'hljs-punctuation':   TextStyle(color: Color(0xFFABB2BF)),
-    'hljs-selector-class':TextStyle(color: Color(0xFFE5C07B)),
-    'hljs-selector-id':   TextStyle(color: Color(0xFFE06C75)),
+    'hljs-deletion': TextStyle(color: Color(0xFFE06C75)),
+    'hljs-name': TextStyle(color: Color(0xFFE06C75)),
+    'hljs-tag': TextStyle(color: Color(0xFFE06C75)),
+    'hljs-attr': TextStyle(color: Color(0xFFD19A66)),
+    'hljs-attribute': TextStyle(color: Color(0xFFD19A66)),
+    'hljs-type': TextStyle(color: Color(0xFFE5C07B)),
+    'hljs-built_in': TextStyle(color: Color(0xFFE5C07B)),
+    'hljs-class': TextStyle(color: Color(0xFFE5C07B)),
+    'hljs-title': TextStyle(color: Color(0xFF61AFEF)),
+    'hljs-function': TextStyle(color: Color(0xFF61AFEF)),
+    'hljs-section': TextStyle(color: Color(0xFF61AFEF)),
+    'hljs-operator': TextStyle(color: Color(0xFF56B6C2)),
+    'hljs-property': TextStyle(color: Color(0xFF56B6C2)),
+    'hljs-regexp': TextStyle(color: Color(0xFF98C379)),
+    'hljs-symbol': TextStyle(color: Color(0xFF56B6C2)),
+    'hljs-bullet': TextStyle(color: Color(0xFFE06C75)),
+    'hljs-meta': TextStyle(color: Color(0xFF5C6370)),
+    'hljs-link': TextStyle(
+        color: Color(0xFF56B6C2), decoration: TextDecoration.underline),
+    'hljs-emphasis': TextStyle(fontStyle: FontStyle.italic),
+    'hljs-strong': TextStyle(fontWeight: FontWeight.bold),
+    'hljs-params': TextStyle(color: Color(0xFFABB2BF)),
+    'hljs-punctuation': TextStyle(color: Color(0xFFABB2BF)),
+    'hljs-selector-class': TextStyle(color: Color(0xFFE5C07B)),
+    'hljs-selector-id': TextStyle(color: Color(0xFFE06C75)),
     'hljs-selector-attr': TextStyle(color: Color(0xFF56B6C2)),
   };
 
@@ -749,17 +1724,43 @@ class _FileViewerPanelState extends State<_FileViewerPanel> {
 
   List<List<InlineSpan>>? _lines;
   double _maxLineChars = 80;
+  bool _editing = false;
+  bool _wrap = false;
+  late TextEditingController _editCtrl;
 
   @override
   void initState() {
     super.initState();
     _parse();
+    _editCtrl = TextEditingController(text: widget.file.content);
   }
 
   @override
   void didUpdateWidget(_FileViewerPanel old) {
     super.didUpdateWidget(old);
-    if (old.file.path != widget.file.path) _parse();
+    if (old.file.path != widget.file.path) {
+      _parse();
+      _editCtrl.text = widget.file.content;
+      _editing = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _editCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final notifier = ref.read(codeProvider.notifier);
+    final err = await notifier.saveFile(widget.file.path, _editCtrl.text);
+    if (!mounted) return;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      return;
+    }
+    setState(() => _editing = false);
+    _parse();
   }
 
   Future<void> _parse() async {
@@ -845,7 +1846,6 @@ class _FileViewerPanelState extends State<_FileViewerPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final lines = _lines;
 
     return Column(
@@ -858,19 +1858,33 @@ class _FileViewerPanelState extends State<_FileViewerPanel> {
           child: Text(
             widget.file.path,
             style: const TextStyle(
-                fontSize: 11, fontFamily: 'monospace', color: Color(0xFF636D83)),
+                fontSize: 11,
+                fontFamily: 'monospace',
+                color: Color(0xFF636D83)),
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        // Code
+        // Code / editor
         Expanded(
-          child: lines == null
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              : _CodeView(
-                  lines: lines,
-                  maxLineChars: _maxLineChars,
-                  content: widget.file.content,
-                ),
+          child: _editing
+              ? _EditorView(
+                  controller: _editCtrl,
+                  wrap: _wrap,
+                  onSave: _save,
+                  onCancel: () => setState(() {
+                    _editing = false;
+                    _editCtrl.text = widget.file.content;
+                  }),
+                )
+              : lines == null
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : _CodeView(
+                      lines: lines,
+                      maxLineChars: _maxLineChars,
+                      content: widget.file.content,
+                      wrap: _wrap,
+                    ),
         ),
         // Footer
         Container(
@@ -891,6 +1905,55 @@ class _FileViewerPanelState extends State<_FileViewerPanel> {
                 style: const TextStyle(fontSize: 11, color: _gutterColor),
               ),
               const Spacer(),
+              // Wrap toggle
+              GestureDetector(
+                onTap: () => setState(() => _wrap = !_wrap),
+                child: Row(
+                  children: [
+                    Icon(Icons.wrap_text,
+                        size: 12,
+                        color: _wrap ? const Color(0xFF61AFEF) : _gutterColor),
+                    const SizedBox(width: 4),
+                    Text('wrap',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: _wrap
+                                ? const Color(0xFF61AFEF)
+                                : _gutterColor)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Edit / save toggle
+              if (_editing)
+                GestureDetector(
+                  onTap: _save,
+                  child: const Row(
+                    children: [
+                      Icon(Icons.save_outlined,
+                          size: 12, color: Color(0xFF98C379)),
+                      SizedBox(width: 4),
+                      Text('save',
+                          style: TextStyle(
+                              fontSize: 11, color: Color(0xFF98C379))),
+                    ],
+                  ),
+                )
+              else
+                GestureDetector(
+                  onTap: () => setState(() => _editing = true),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.edit_outlined,
+                          size: 12, color: Color(0xFF61AFEF)),
+                      SizedBox(width: 4),
+                      Text('edit',
+                          style: TextStyle(
+                              fontSize: 11, color: Color(0xFF61AFEF))),
+                    ],
+                  ),
+                ),
+              const SizedBox(width: 16),
               GestureDetector(
                 onTap: () =>
                     Clipboard.setData(ClipboardData(text: widget.file.content)),
@@ -898,7 +1961,8 @@ class _FileViewerPanelState extends State<_FileViewerPanel> {
                   children: [
                     Icon(Icons.copy, size: 12, color: _gutterColor),
                     SizedBox(width: 4),
-                    Text('copy', style: TextStyle(fontSize: 11, color: _gutterColor)),
+                    Text('copy',
+                        style: TextStyle(fontSize: 11, color: _gutterColor)),
                   ],
                 ),
               ),
@@ -914,11 +1978,13 @@ class _CodeView extends StatelessWidget {
   final List<List<InlineSpan>> lines;
   final double maxLineChars;
   final String content;
+  final bool wrap;
 
   const _CodeView({
     required this.lines,
     required this.maxLineChars,
     required this.content,
+    this.wrap = false,
   });
 
   @override
@@ -932,15 +1998,15 @@ class _CodeView extends StatelessWidget {
       color: _FileViewerPanelState._bg,
       child: Scrollbar(
         child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+          scrollDirection: wrap ? Axis.vertical : Axis.horizontal,
           child: SizedBox(
-            width: contentWidth,
+            width: wrap ? null : contentWidth,
             child: ListView.builder(
               itemCount: lineCount,
               itemExtent: 20.0,
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemBuilder: (_, i) => Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Gutter
                   Container(
@@ -967,9 +2033,9 @@ class _CodeView extends StatelessWidget {
                             ? const [TextSpan(text: '​')]
                             : lines[i],
                       ),
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.visible,
+                      maxLines: wrap ? null : 1,
+                      softWrap: wrap,
+                      overflow: wrap ? TextOverflow.clip : TextOverflow.visible,
                     ),
                   ),
                 ],
@@ -977,6 +2043,81 @@ class _CodeView extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A plain-text editor for a file, with optional wrapping and save/cancel.
+class _EditorView extends StatelessWidget {
+  final TextEditingController controller;
+  final bool wrap;
+  final VoidCallback onSave;
+  final VoidCallback onCancel;
+
+  const _EditorView({
+    required this.controller,
+    required this.wrap,
+    required this.onSave,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: _FileViewerPanelState._bg,
+      child: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(12),
+              child: TextField(
+                controller: controller,
+                maxLines: null,
+                expands: true,
+                keyboardType: TextInputType.multiline,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  color: _FileViewerPanelState._baseColor,
+                  height: 1.4,
+                ),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  filled: false,
+                  hintText: 'Edit the file…',
+                  hintStyle: TextStyle(color: Color(0xFF4B5263)),
+                ),
+              ),
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            color: _FileViewerPanelState._gutterBg,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: onCancel,
+                  child: const Text('Cancel',
+                      style: TextStyle(fontSize: 12, color: Color(0xFFE06C75))),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: onSave,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF98C379),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  ),
+                  child: const Text('Save',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF282C34))),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1035,7 +2176,8 @@ class _EntryTileState extends State<_EntryTile> {
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 4),
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.65),
+            constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.65),
             decoration: BoxDecoration(
               color: cs.primary.withOpacity(0.85),
               borderRadius: const BorderRadius.only(
@@ -1046,7 +2188,8 @@ class _EntryTileState extends State<_EntryTile> {
               ),
             ),
             child: Text(e.content,
-                style: TextStyle(color: cs.onPrimary, fontSize: 13, height: 1.4)),
+                style:
+                    TextStyle(color: cs.onPrimary, fontSize: 13, height: 1.4)),
           ),
         ),
       CodeEntryType.assistantText => Padding(
@@ -1054,8 +2197,7 @@ class _EntryTileState extends State<_EntryTile> {
           child: MarkdownBody(
             data: e.content,
             styleSheet: MarkdownStyleSheet(
-              p: TextStyle(
-                  fontSize: 13, color: cs.onSurface, height: 1.55),
+              p: TextStyle(fontSize: 13, color: cs.onSurface, height: 1.55),
               code: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 12,
@@ -1104,7 +2246,8 @@ class _EntryTileState extends State<_EntryTile> {
           decoration: BoxDecoration(
             color: const Color(0xFF1E1E2E),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.15)),
+            border:
+                Border.all(color: const Color(0xFF3B82F6).withOpacity(0.15)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1164,7 +2307,8 @@ class _EntryTileState extends State<_EntryTile> {
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
-                      onTap: () => Clipboard.setData(ClipboardData(text: e.content)),
+                      onTap: () =>
+                          Clipboard.setData(ClipboardData(text: e.content)),
                       child: Icon(Icons.copy,
                           size: 12, color: cs.onSurface.withOpacity(0.3)),
                     ),

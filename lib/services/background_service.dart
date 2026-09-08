@@ -2,6 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+/// Environment variables the background agent processes must never inherit.
+const _bgStripEnv = {
+  'AWS_SECRET_ACCESS_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_SESSION_TOKEN',
+  'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY',
+  'GITHUB_TOKEN', 'GH_TOKEN', 'NPM_TOKEN', 'PYPI_TOKEN',
+  'DOCKER_PASSWORD', 'GOOGLE_APPLICATION_CREDENTIALS', 'GOOGLE_CLIENT_SECRET',
+  'SUPABASE_SERVICE_ROLE', 'SSH_PRIVATE_KEY', 'DATABASE_URL',
+};
+
 /// A single long-running background process started by the agent.
 class BackgroundJob {
   final String id;
@@ -53,9 +62,20 @@ class BackgroundProcessManager {
       throw StateError('Shell execution is not supported on this platform.');
     }
     final id = 'bg-${++_counter}';
+
+    // Never pass sensitive env values to a background process — it may be a
+    // shell the agent controls, and secrets must not leak out of it. PATH is
+    // left as-is so legitimate build/server toolchains (nvm, pyenv, etc.)
+    // keep working; the restricted sandbox already normalises PATH separately.
+    final env = Map<String, String>.from(Platform.environment);
+    for (final k in _bgStripEnv) {
+      env.remove(k);
+    }
+
     final process = await Process.start(
       'sh', ['-c', command],
       workingDirectory: workingDir,
+      environment: env,
       runInShell: false,
     );
     final job = BackgroundJob(

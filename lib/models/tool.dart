@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart' show IconData, Icons;
+
 class Tool {
   final String name;
   final String description;
@@ -25,6 +27,48 @@ class Tool {
         'description': description,
         'parameters': inputSchema,
       };
+}
+
+/// Behavioural modes for the Code agent.
+enum CodeMode {
+  // Fully autonomous — run every tool without asking.
+  yolo,
+  // Ask for approval before every tool call.
+  ask,
+  // Plan first: present a plan, then confirm before each step.
+  plan,
+  // Edit-only: file read/write/edit tools, no shell or web, no confirmation.
+  edit,
+}
+
+extension CodeModeX on CodeMode {
+  String get label => switch (this) {
+        CodeMode.yolo => 'YOLO',
+        CodeMode.ask => 'Ask',
+        CodeMode.plan => 'Plan',
+        CodeMode.edit => 'Edit',
+      };
+
+  /// Description shown in the mode picker.
+  String get description => switch (this) {
+        CodeMode.yolo => 'Fully autonomous. Runs every tool without asking.',
+        CodeMode.ask => 'Asks for approval before every tool call.',
+        CodeMode.plan => 'Presents a plan, then confirms before each step.',
+        CodeMode.edit => 'File edits only — no shell or web, no confirmation.',
+      };
+
+  IconData get icon => switch (this) {
+        CodeMode.yolo => Icons.rocket_launch,
+        CodeMode.ask => Icons.question_mark,
+        CodeMode.plan => Icons.list_alt,
+        CodeMode.edit => Icons.edit_note,
+      };
+
+  /// Whether tool calls should pause for user approval before running.
+  bool get requiresApproval => this == CodeMode.ask || this == CodeMode.plan;
+
+  /// The agent is only allowed to read/write/edit files.
+  bool get editOnly => this == CodeMode.edit;
 }
 
 class ToolCall {

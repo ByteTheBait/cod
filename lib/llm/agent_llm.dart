@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import '../models/config.dart';
 import '../models/tool.dart';
 import '../utils/rate_limit.dart';
 
@@ -9,31 +9,35 @@ class AgentLLM {
     required List<Tool> tools,
     required String model,
     required String apiKey,
-    required String providerId,
+    required ProviderProtocol protocol,
     String? baseUrl,
     String? system,
     int maxTokens = 8192,
   }) async {
-    return switch (providerId) {
-      'gemini' => _callGemini(
+    return switch (protocol) {
+      ProviderProtocol.gemini => _callGemini(
           messages: messages, tools: tools, model: model, apiKey: apiKey,
           system: system, maxTokens: maxTokens),
-      'groq' => _callOpenAI(
-          url: 'https://api.groq.com/openai/v1/chat/completions',
-          messages: messages, tools: tools, model: model, apiKey: apiKey,
-          system: system, maxTokens: maxTokens),
-      'ollama' => _callOpenAI(
-          url: '${(baseUrl?.isNotEmpty == true ? baseUrl : 'http://localhost:11434')}/v1/chat/completions',
-          messages: messages, tools: tools, model: model, apiKey: '',
-          system: system, maxTokens: maxTokens),
-      'custom' => _callOpenAI(
-          url: '${(baseUrl?.isNotEmpty == true ? baseUrl : 'https://api.openai.com/v1')}/chat/completions',
-          messages: messages, tools: tools, model: model, apiKey: apiKey,
-          system: system, maxTokens: maxTokens),
-      _ => _callClaude(
+      ProviderProtocol.anthropic => _callClaude(
           messages: messages, tools: tools, model: model, apiKey: apiKey,
           baseUrl: baseUrl, system: system, maxTokens: maxTokens),
+      ProviderProtocol.openai => _callOpenAI(
+          url: _openAIUrl(baseUrl),
+          messages: messages, tools: tools, model: model, apiKey: apiKey,
+          system: system, maxTokens: maxTokens),
     };
+  }
+
+  /// OpenAI-compatible endpoints take `/v1/chat/completions` under their base.
+  /// If the user supplied a base that already ends in `/v1` or points at a
+  /// local gateway that routes `/chat/completions` directly, we append
+  /// accordingly rather than double-suffixing.
+  String _openAIUrl(String? baseUrl) {
+    var base = (baseUrl?.isNotEmpty == true ? baseUrl! : 'https://api.openai.com/v1');
+    base = base.replaceAll(RegExp(r'/+$'), '');
+    if (base.endsWith('/chat/completions')) return base;
+    if (base.endsWith('/v1') || base.endsWith('/v1beta')) return '$base/chat/completions';
+    return '$base/v1/chat/completions';
   }
 
   // ── Claude ────────────────────────────────────────────────────────────────
@@ -47,13 +51,15 @@ class AgentLLM {
     String? system,
     required int maxTokens,
   }) async {
-    final url = (baseUrl?.isNotEmpty == true ? baseUrl! : 'https://api.anthropic.com') + '/v1/messages';
+    final url = (baseUrl?.isNotEmpty == true
+        ? baseUrl!.replaceAll(RegExp(r'/+$'), '')
+        : 'https://api.anthropic.com') + '/v1/messages';
     final body = <String, dynamic>{
       'model': model,
       'max_tokens': maxTokens,
       if (system != null && system.isNotEmpty) 'system': system,
       'tools': tools.map((t) => t.toClaudeJson()).toList(),
-      'messages': messages,
+      'messages': _mergeConsecutiveSameRole(messages),
     };
     final resp = await postWithRetry(Uri.parse(url), headers: {
       'x-api-key': apiKey,
@@ -127,10 +133,17 @@ class AgentLLM {
     required List<Tool> tools,
     required String model,
     required String apiKey,
+    String? baseUrl,
     String? system,
     required int maxTokens,
   }) async {
-    final url = 'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey';
+    String endpoint = (baseUrl?.isNotEmpty == true
+        ? baseUrl!
+        : 'https://generativelanguage.googleapis.com').replaceAll(RegExp(r'/+$'), '');
+    if (!endpoint.endsWith(':generateContent')) {
+      endpoint = '$endpoint/v1beta/models/$model:generateContent';
+    }
+    final url = '$endpoint?key=$apiKey';
     final body = <String, dynamic>{
       'contents': _toGeminiContents(messages),
       if (system != null && system.isNotEmpty)
@@ -203,9 +216,62 @@ class AgentLLM {
         }
         out.add({
           'role': 'assistant',
-          'content': text.isEmpty ? null : text,
+          // Use an empty string (not null) so strict providers don't reject
+          // an assistant turn that has only tool calls.
+          'content': text.isEmpty ? '' : text,
           if (toolCalls.isNotEmpty) 'tool_calls': toolCalls,
         });
+      }
+    }
+    // Collapse consecutive messages from the same role. OpenAI-compatible
+    // endpoints (and providers in general) are unreliable with back-to-back
+    // user/tool turns — some silently drop one, which loses prior context.
+    return _mergeSameRole(out);
+  }
+
+  /// Merge adjacent messages of the same role so the provider never sees
+  /// consecutive user/tool/assistant turns it may reject or silently drop.
+  List<Map<String, dynamic>> _mergeSameRole(List<Map<String, dynamic>> msgs) {
+    if (msgs.isEmpty) return msgs;
+    final out = <Map<String, dynamic>>[msgs.first];
+    for (final m in msgs.skip(1)) {
+      final last = out.last;
+      if (last['role'] == m['role'] && last['role'] != 'tool') {
+        // Fold the new message's text into the previous one. Tool calls are
+        // kept on the first message; later non-tool text is appended.
+        final prevText = (last['content'] as String? ?? '');
+        final curText = (m['content'] as String? ?? '');
+        last['content'] = prevText.isEmpty ? curText : '$prevText\n$curText';
+      } else {
+        out.add(m);
+      }
+    }
+    return out;
+  }
+
+  /// Merge adjacent messages with the same role. Within a single run the
+  /// history interleaves assistant (tool_use) and user (tool_result) turns, so
+  /// this is normally a no-op — but if a run is interrupted and its partial
+  /// history is carried forward, consecutive same-role turns can appear and
+  /// cause providers to error or drop earlier context. Claude enforces strictly
+  /// alternating user/assistant messages, so folding them prevents failed calls.
+  List<Map<String, dynamic>> _mergeConsecutiveSameRole(
+      List<Map<String, dynamic>> msgs) {
+    if (msgs.length < 2) return msgs;
+    final out = <Map<String, dynamic>>[msgs.first];
+    for (final m in msgs.skip(1)) {
+      final last = out.last;
+      if (last['role'] == m['role']) {
+        // Append this message's content to the previous one.
+        final prev = last['content'];
+        final cur = m['content'];
+        if (prev is String && cur is String) {
+          last['content'] = '$prev\n$cur';
+        } else {
+          out.add(m);
+        }
+      } else {
+        out.add(m);
       }
     }
     return out;

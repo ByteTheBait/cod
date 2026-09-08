@@ -22,7 +22,9 @@ class ProviderBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _colors[providerId] ?? Colors.grey;
+    // For the built-in id set we have explicit colours; anything else (a
+    // user-defined provider) is coloured by the id hash so it's stable.
+    final color = _colors[providerId] ?? _hashColor(providerId);
     final label = compact ? _shortModel(modelId) : '$providerId · ${_shortModel(modelId)}';
 
     return Container(
@@ -42,6 +44,25 @@ class ProviderBadge extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static const _palette = [
+    Color(0xFFDA7756), // claude-orange
+    Color(0xFF4285F4), // blue
+    Color(0xFF00B4D8), // teal
+    Color(0xFF7CB77C), // green
+    Color(0xFF9C6ADE), // violet
+    Color(0xFFF06292), // pink
+    Color(0xFFFFB300), // amber
+    Color(0xFF26A69A), // teal-green
+  ];
+
+  Color _hashColor(String s) {
+    var h = 0;
+    for (final c in s.codeUnits) {
+      h = (h * 31 + c) & 0x7fffffff;
+    }
+    return _palette[h % _palette.length];
   }
 
   String _shortModel(String model) {

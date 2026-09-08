@@ -48,8 +48,14 @@ app.*.map.json
 *.app/
 Cod-*.zip
 
-# Local secrets
+# Local secrets — never commit. This is a hard ignore so `git add -f` /
+# forks / copy-paste can't accidentally leak keys & client secrets into the
+# repo. Keep an `.env.example` with only placeholder values instead.
 .env
+.env.*
+!.env.example
+.env.local
+.env.production
 
 # Build Artifacts
 *.dmg

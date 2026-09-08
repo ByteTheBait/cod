@@ -23,7 +23,30 @@ AI-powered developer assistant for macOS — conversational chat, Gmail, Google 
 
 ### Code
 - VSCode-style file explorer: lazy-loaded directory tree, per-language icons, draggable resize handle
+- **Easy folder opening** — no need to hunt through the native picker every time:
+  - **Recent folders** — a quick-switch list of your last-opened folders (persisted, removable)
+  - **Paste a path** — type or paste a full path (`~/projects/app`, relative, or absolute)
+  - **CLI / Finder** — launch with `Cod /path/to/folder`, or drag a folder onto the app / use Finder's "Open With" to jump straight to it
+  - Native folder picker is still there as a fallback
 - Syntax-highlighted file viewer (Atom One Dark, 20+ languages, line numbers, horizontal scroll)
+- **Agent modes** — a mode switcher in the Code toolbar controls how autonomous the agent is:
+  - **YOLO** — runs every tool end-to-end without asking
+  - **Ask** — pauses for approval before *every* tool call
+  - **Plan** — plans first and confirms before each state-changing or shell tool (read-only tools run automatically)
+  - **Edit** — file read/write/edit tools only; no shell or web access
+- **Sub-agents** — specialised agents with their own system prompt, restricted tool set, and optional model override, selectable from the Code toolbar:
+  - **Explore** — read-only codebase exploration; reports structure and findings without changing anything
+  - **Debug** — diagnoses and fixes bugs by reading code and running commands
+  - **Refactor** — improves code structure and readability while preserving behaviour
+  - **Test** — writes and runs tests, then verifies the suite passes
+  - **Full agent** — the default, with all tools
+  - Users can **add their own sub-agents** from Settings (name, description, icon, system prompt, tool set, and model)
+- **Delegation** — the full agent can hand off focused work to a sub-agent via the `delegate` tool. The sub-agent runs with its own system prompt, tool set, and model, then returns a summary the main agent acts on. This lets you mix a fast/cheap model for routine sub-tasks and a stronger model for the main orchestration.
+- **Parallel sub-agents** — the `delegate_parallel` tool runs several sub-agents concurrently and combines their results, so independent work (e.g. exploring multiple areas at once) finishes much faster.
+- **Tabbed code workspaces** — run multiple independent code agents in one app. Each workspace has its own folder, conversation, open files, and sessions. Open a new tab with the `+` button or the command palette.
+- **Command palette** — press `⌘K` to search and run any command (switch tabs, open folder, new session, compact context, and more).
+- **Custom keyboard shortcuts** — rebind any shortcut from Settings (command palette, new session, run agent, open folder, tab switching, and more).
+- **Context window management** — a live token counter in the Code toolbar shows your estimated context size (green → amber → red). Tap it (or run "Compact context") to trim the conversation to the most recent messages when it grows too large.
 - Agentic loop — the model calls tools iteratively until the task is complete:
   - `read_file`, `write_file`, `list_directory`, `create_directory`
   - `str_replace_file` — targeted single-file edits
@@ -124,6 +147,8 @@ lib/
 │   ├── task.dart
 │   ├── config.dart         # Provider configs + defaults
 │   ├── tool.dart           # Tool, ToolCall, sealed AgentEvent hierarchy
+│   ├── subagent.dart       # SubAgent model + built-in defaults
+│   ├── command.dart        # Command palette + keyboard shortcut model
 │   └── email_model.dart
 │
 ├── llm/                    # Provider clients
@@ -159,6 +184,7 @@ lib/
     ├── file_tree.dart      # Flat-list lazy directory tree
     ├── message_bubble.dart
     ├── provider_badge.dart
+    ├── command_palette.dart # Command palette overlay + shortcut recorder
     └── task_tile.dart
 ```
 

@@ -2,10 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import '../models/tool.dart';
 import '../services/background_service.dart';
 import '../services/sandbox_service.dart';
 
+export '../models/tool.dart' show CodeMode, CodeModeX;
 export '../services/sandbox_service.dart' show SandboxType, ContainerStatus;
 
 // ── Entry types (agent conversation) ─────────────────────────────────────────
@@ -65,6 +68,75 @@ class CodeFile {
   const CodeFile({required this.path, required this.name, required this.content});
 }
 
+// ── Code workspace (a tabbed code session) ────────────────────────────────────
+
+/// A single code "tab" in the Code screen. Each workspace has its own working
+/// directory, conversation, open files, and sessions. This lets you run
+/// multiple independent code agents in one app.
+class CodeWorkspace {
+  final String id;
+  final String title;
+  final String workingDir;
+  final List<CodeEntry> entries;
+  final List<Map<String, dynamic>> history;
+  final List<CodeFile> openFiles;
+  final int? activeFileIndex;
+  final List<CodeSession> sessions;
+  final String? activeSessionId;
+  final String? subAgentId;
+  final CodeMode mode;
+  final int estimatedTokens;
+
+  const CodeWorkspace({
+    required this.id,
+    required this.title,
+    this.workingDir = '',
+    this.entries = const [],
+    this.history = const [],
+    this.openFiles = const [],
+    this.activeFileIndex,
+    this.sessions = const [],
+    this.activeSessionId,
+    this.subAgentId,
+    this.mode = CodeMode.yolo,
+    this.estimatedTokens = 0,
+  });
+
+  CodeWorkspace copyWith({
+    String? title,
+    String? workingDir,
+    List<CodeEntry>? entries,
+    List<Map<String, dynamic>>? history,
+    List<CodeFile>? openFiles,
+    Object? activeFileIndex = _unset,
+    List<CodeSession>? sessions,
+    Object? activeSessionId = _unset,
+    Object? subAgentId = _unset,
+    CodeMode? mode,
+    int? estimatedTokens,
+  }) =>
+      CodeWorkspace(
+        id: id,
+        title: title ?? this.title,
+        workingDir: workingDir ?? this.workingDir,
+        entries: entries ?? this.entries,
+        history: history ?? this.history,
+        openFiles: openFiles ?? this.openFiles,
+        activeFileIndex: identical(activeFileIndex, _unset)
+            ? this.activeFileIndex
+            : activeFileIndex as int?,
+        sessions: sessions ?? this.sessions,
+        activeSessionId: identical(activeSessionId, _unset)
+            ? this.activeSessionId
+            : activeSessionId as String?,
+        subAgentId: identical(subAgentId, _unset)
+            ? this.subAgentId
+            : subAgentId as String?,
+        mode: mode ?? this.mode,
+        estimatedTokens: estimatedTokens ?? this.estimatedTokens,
+      );
+}
+
 // ── Code session (a saved agent conversation for a working dir) ───────────────
 
 class CodeSession {
@@ -115,6 +187,8 @@ class CodeState {
   final List<CodeEntry> entries;
   final List<Map<String, dynamic>> history; // LLM message history for multi-turn
   final bool isRunning;
+  final CodeMode mode; // agent behavioural mode
+  final String? subAgentId; // active subagent, null = full agent
   // Sandbox
   final SandboxType? sandboxType;
   final SandboxType? requestedSandboxType;
@@ -127,12 +201,22 @@ class CodeState {
   // Session history for the current working dir
   final List<CodeSession> sessions;
   final String? activeSessionId;
+  // Recently opened folders (most recent first), for quick switching.
+  final List<String> recentFolders;
+  // Estimated token count of the current conversation history.
+  final int estimatedTokens;
+  // Multiple code workspaces (tabs). The active workspace's state is mirrored
+  // in the fields above; the rest live here.
+  final List<CodeWorkspace> workspaces;
+  final String? activeWorkspaceId;
 
   const CodeState({
     this.workingDir = '',
     this.entries = const [],
     this.history = const [],
     this.isRunning = false,
+    this.mode = CodeMode.yolo,
+    this.subAgentId,
     this.sandboxType,
     this.requestedSandboxType,
     this.containerStatus = ContainerStatus.idle,
@@ -142,6 +226,10 @@ class CodeState {
     this.activeFileIndex,
     this.sessions = const [],
     this.activeSessionId,
+    this.recentFolders = const [],
+    this.estimatedTokens = 0,
+    this.workspaces = const [],
+    this.activeWorkspaceId,
   });
 
   CodeState copyWith({
@@ -149,6 +237,8 @@ class CodeState {
     List<CodeEntry>? entries,
     List<Map<String, dynamic>>? history,
     bool? isRunning,
+    CodeMode? mode,
+    Object? subAgentId = _unset,
     SandboxType? sandboxType,
     SandboxType? requestedSandboxType,
     ContainerStatus? containerStatus,
@@ -159,12 +249,20 @@ class CodeState {
     Object? activeFileIndex = _unset,
     List<CodeSession>? sessions,
     Object? activeSessionId = _unset,
+    List<String>? recentFolders,
+    int? estimatedTokens,
+    List<CodeWorkspace>? workspaces,
+    Object? activeWorkspaceId = _unset,
   }) =>
       CodeState(
         workingDir: workingDir ?? this.workingDir,
         entries: entries ?? this.entries,
         history: history ?? this.history,
         isRunning: isRunning ?? this.isRunning,
+        mode: mode ?? this.mode,
+        subAgentId: identical(subAgentId, _unset)
+            ? this.subAgentId
+            : subAgentId as String?,
         sandboxType: sandboxType ?? this.sandboxType,
         requestedSandboxType: requestedSandboxType ?? this.requestedSandboxType,
         containerStatus: containerStatus ?? this.containerStatus,
@@ -178,6 +276,12 @@ class CodeState {
         activeSessionId: identical(activeSessionId, _unset)
             ? this.activeSessionId
             : activeSessionId as String?,
+        recentFolders: recentFolders ?? this.recentFolders,
+        estimatedTokens: estimatedTokens ?? this.estimatedTokens,
+        workspaces: workspaces ?? this.workspaces,
+        activeWorkspaceId: identical(activeWorkspaceId, _unset)
+            ? this.activeWorkspaceId
+            : activeWorkspaceId as String?,
       );
 }
 
@@ -193,6 +297,7 @@ class CodeNotifier extends Notifier<CodeState> {
       BackgroundProcessManager.instance.dispose();
     });
     Future.microtask(_detectSandbox);
+    Future.microtask(_loadRecentFolders);
     return const CodeState();
   }
 
@@ -443,8 +548,222 @@ class CodeNotifier extends Notifier<CodeState> {
     if (!v) _save();
   }
 
+  void setMode(CodeMode mode) {
+    if (mode == state.mode) return;
+    state = state.copyWith(mode: mode);
+  }
+
+  /// Set the active subagent. Pass null to use the full agent.
+  void setSubAgent(String? id) {
+    if (id == state.subAgentId) return;
+    state = state.copyWith(subAgentId: id);
+    _syncActiveWorkspace();
+  }
+
+  // ── Workspaces (tabbed code) ────────────────────────────────────────────────
+
+  /// Snapshot the current active workspace's state into the workspaces list.
+  void _syncActiveWorkspace() {
+    final id = state.activeWorkspaceId;
+    if (id == null) return;
+    final ws = CodeWorkspace(
+      id: id,
+      title: _workspaceTitle(id),
+      workingDir: state.workingDir,
+      entries: state.entries,
+      history: state.history,
+      openFiles: state.openFiles,
+      activeFileIndex: state.activeFileIndex,
+      sessions: state.sessions,
+      activeSessionId: state.activeSessionId,
+      subAgentId: state.subAgentId,
+      mode: state.mode,
+      estimatedTokens: state.estimatedTokens,
+    );
+    state = state.copyWith(
+      workspaces: [
+        for (final w in state.workspaces) w.id == id ? ws : w,
+      ],
+    );
+  }
+
+  String _workspaceTitle(String id) {
+    for (final w in state.workspaces) {
+      if (w.id == id) return w.title;
+    }
+    return 'Code';
+  }
+
+  /// Create a new empty workspace and switch to it.
+  void newWorkspace() {
+    // If there's no active workspace yet but the current view has content
+    // (e.g. a folder was opened before any tab was created), capture it as
+    // the first workspace so it isn't lost when we switch to the new tab.
+    if (state.activeWorkspaceId == null) {
+      final firstId = const Uuid().v4();
+      final first = CodeWorkspace(
+        id: firstId,
+        title: 'Code 1',
+        workingDir: state.workingDir,
+        entries: state.entries,
+        history: state.history,
+        openFiles: state.openFiles,
+        activeFileIndex: state.activeFileIndex,
+        sessions: state.sessions,
+        activeSessionId: state.activeSessionId,
+        subAgentId: state.subAgentId,
+        mode: state.mode,
+        estimatedTokens: state.estimatedTokens,
+      );
+      state = state.copyWith(
+        workspaces: [first],
+        activeWorkspaceId: firstId,
+      );
+    } else {
+      _syncActiveWorkspace();
+    }
+
+    final id = const Uuid().v4();
+    final ws = CodeWorkspace(id: id, title: 'Code ${state.workspaces.length + 1}');
+    state = state.copyWith(
+      workspaces: [...state.workspaces, ws],
+      activeWorkspaceId: id,
+      workingDir: '',
+      entries: const [],
+      history: const [],
+      openFiles: const [],
+      activeFileIndex: null,
+      sessions: const [],
+      activeSessionId: null,
+      subAgentId: null,
+      estimatedTokens: 0,
+      clearSandboxError: true,
+      containerStatus: ContainerStatus.idle,
+    );
+  }
+
+  /// Switch to an existing workspace, restoring its state.
+  void switchWorkspace(String id) {
+    final ws = state.workspaces.where((w) => w.id == id).firstOrNull;
+    if (ws == null || ws.id == state.activeWorkspaceId) return;
+    _syncActiveWorkspace();
+    state = state.copyWith(
+      activeWorkspaceId: id,
+      workingDir: ws.workingDir,
+      entries: ws.entries,
+      history: ws.history,
+      openFiles: ws.openFiles,
+      activeFileIndex: ws.activeFileIndex,
+      sessions: ws.sessions,
+      activeSessionId: ws.activeSessionId,
+      subAgentId: ws.subAgentId,
+      mode: ws.mode,
+      estimatedTokens: ws.estimatedTokens,
+      clearSandboxError: true,
+      containerStatus: ContainerStatus.idle,
+    );
+    // Restart the sandbox for the new workspace's directory without touching
+    // the restored conversation state.
+    if (ws.workingDir.isNotEmpty) {
+      _startSandboxFor(ws.workingDir);
+    }
+  }
+
+  /// Close a workspace. If it's the active one, switch to another.
+  void closeWorkspace(String id) {
+    final remaining = state.workspaces.where((w) => w.id != id).toList();
+    if (remaining.isEmpty) {
+      // Closing the last workspace resets to a fresh one.
+      state = state.copyWith(
+        workspaces: const [],
+        activeWorkspaceId: null,
+        workingDir: '',
+        entries: const [],
+        history: const [],
+        openFiles: const [],
+        activeFileIndex: null,
+        sessions: const [],
+        activeSessionId: null,
+        subAgentId: null,
+        estimatedTokens: 0,
+        clearSandboxError: true,
+        containerStatus: ContainerStatus.idle,
+      );
+      return;
+    }
+    if (state.activeWorkspaceId == id) {
+      final next = remaining.first;
+      state = state.copyWith(
+        workspaces: remaining,
+        activeWorkspaceId: next.id,
+        workingDir: next.workingDir,
+        entries: next.entries,
+        history: next.history,
+        openFiles: next.openFiles,
+        activeFileIndex: next.activeFileIndex,
+        sessions: next.sessions,
+        activeSessionId: next.activeSessionId,
+        subAgentId: next.subAgentId,
+        mode: next.mode,
+        estimatedTokens: next.estimatedTokens,
+        clearSandboxError: true,
+        containerStatus: ContainerStatus.idle,
+      );
+      if (next.workingDir.isNotEmpty) _startSandboxFor(next.workingDir);
+    } else {
+      state = state.copyWith(workspaces: remaining);
+    }
+  }
+
   void updateHistory(List<Map<String, dynamic>> messages) {
-    state = state.copyWith(history: messages);
+    state = state.copyWith(
+      history: messages,
+      estimatedTokens: _estimateTokens(messages),
+    );
+  }
+
+  /// Rough token estimate for a message list (≈4 chars per token).
+  int _estimateTokens(List<Map<String, dynamic>> messages) {
+    var chars = 0;
+    for (final m in messages) {
+      final content = m['content'];
+      if (content is String) {
+        chars += content.length;
+      } else if (content is List) {
+        for (final block in content) {
+          final b = block as Map<String, dynamic>;
+          final text = b['text'] as String?;
+          if (text != null) chars += text.length;
+          final input = b['input'];
+          if (input is Map) chars += jsonEncode(input).length;
+        }
+      }
+    }
+    return (chars / 4).round();
+  }
+
+  /// Compact the conversation history by keeping only the most recent
+  /// [keepMessages] messages (plus the first system/user prompt). This trims
+  /// the context window when it grows too large.
+  void compactHistory({int keepMessages = 12}) {
+    final history = state.history;
+    if (history.length <= keepMessages) return;
+    // Keep the first message (usually the initial prompt) plus the last N.
+    final first = history.first;
+    final tail = history.sublist(history.length - keepMessages);
+    final compacted = [first, ...tail];
+    state = state.copyWith(
+      history: compacted,
+      estimatedTokens: _estimateTokens(compacted),
+    );
+    // Also trim the visible entries to match (keep the last ~2x messages).
+    final entries = state.entries;
+    if (entries.length > keepMessages * 2) {
+      state = state.copyWith(
+        entries: entries.sublist(entries.length - keepMessages * 2),
+      );
+    }
+    _save();
   }
 
   Future<void> clearConversation() async {
@@ -452,10 +771,67 @@ class CodeNotifier extends Notifier<CodeState> {
     await _save();
   }
 
+  static const _prefRecentFolders = 'recent_folders';
+  static const _maxRecentFolders = 8;
+
   Future<void> setWorkingDir(String dir) => _setWorkingDir(dir);
+
+  /// Set the working directory from a raw path string (e.g. pasted or from a
+  /// CLI arg). Expands `~`, resolves relative paths against the current dir,
+  /// and validates the directory exists. Returns the resolved path, or null
+  /// if it couldn't be resolved.
+  Future<String?> setWorkingDirFromPath(String raw) async {
+    var path = raw.trim();
+    if (path.isEmpty) return null;
+    if (path == '~') {
+      path = Platform.environment['HOME'] ?? path;
+    } else if (path.startsWith('~/')) {
+      final home = Platform.environment['HOME'];
+      if (home != null) path = '$home${path.substring(1)}';
+    }
+    if (!path.startsWith('/')) {
+      // Resolve relative to the current working dir, or the process cwd.
+      final base = state.workingDir.isNotEmpty
+          ? state.workingDir
+          : Directory.current.path;
+      path = '$base/$path';
+    }
+    final dir = Directory(path);
+    if (!await dir.exists()) return null;
+    await _setWorkingDir(dir.absolute.path);
+    return dir.absolute.path;
+  }
+
+  /// Load recently opened folders from disk.
+  Future<void> _loadRecentFolders() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_prefRecentFolders) ?? const [];
+      state = state.copyWith(recentFolders: list);
+    } catch (_) {}
+  }
+
+  Future<void> _persistRecentFolders() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_prefRecentFolders, state.recentFolders);
+    } catch (_) {}
+  }
+
+  /// Remove a folder from the recent list (does not change the working dir).
+  Future<void> removeRecentFolder(String dir) async {
+    state = state.copyWith(
+        recentFolders: state.recentFolders.where((d) => d != dir).toList());
+    await _persistRecentFolders();
+  }
 
   Future<void> _setWorkingDir(String dir) async {
     if (_sandbox.status == ContainerStatus.running) await _sandbox.stop();
+    // Record the folder in the recent list (most recent first, deduped).
+    final recent = [
+      dir,
+      ...state.recentFolders.where((d) => d != dir),
+    ].take(_maxRecentFolders).toList();
     state = state.copyWith(
       workingDir: dir,
       entries: [],
@@ -464,15 +840,22 @@ class CodeNotifier extends Notifier<CodeState> {
       activeFileIndex: null,
       sessions: const [],
       activeSessionId: null,
+      recentFolders: recent,
       clearSandboxError: true,
       containerStatus: ContainerStatus.idle,
     );
+    await _persistRecentFolders();
     if (dir.isEmpty) return;
     await _loadSession(dir);
+    await _startSandboxFor(dir);
+  }
 
+  /// Start (or restart) the sandbox for [dir] without touching the
+  /// conversation state. Used when switching between workspaces so the
+  /// restored entries/history are preserved.
+  Future<void> _startSandboxFor(String dir) async {
     state = state.copyWith(containerStatus: ContainerStatus.starting);
     try {
-      // Set the sandbox mode based on user request or detection
       final desiredMode = state.requestedSandboxType ?? state.sandboxType ?? SandboxType.restricted;
       _sandbox.setMode(desiredMode);
       await _sandbox.start(workingDir: dir, image: state.sandboxImage);
@@ -524,6 +907,27 @@ class CodeNotifier extends Notifier<CodeState> {
       if (newIndex == index && files.isNotEmpty) newIndex = (index - 1).clamp(0, files.length - 1);
     }
     state = state.copyWith(openFiles: files, activeFileIndex: newIndex);
+  }
+
+  /// Save edited content back to disk and update the open file tab.
+  /// Returns an error string, or null on success.
+  Future<String?> saveFile(String path, String content) async {
+    final file = File(path);
+    try {
+      await file.writeAsString(content);
+    } catch (e) {
+      return 'Could not save: $e';
+    }
+    // Update the open file tab's content.
+    state = state.copyWith(
+      openFiles: [
+        for (final f in state.openFiles)
+          f.path == path
+              ? CodeFile(path: f.path, name: f.name, content: content)
+              : f,
+      ],
+    );
+    return null;
   }
 
   void showAgentTab() => state = state.copyWith(activeFileIndex: null);

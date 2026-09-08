@@ -1,10 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../llm/provider.dart';
-import '../llm/claude.dart';
-import '../llm/gemini.dart';
-import '../llm/groq.dart';
-import '../llm/ollama.dart';
-import '../llm/custom.dart';
+import '../llm/factory.dart';
 import '../models/config.dart';
 import '../models/task.dart';
 import '../services/minnow_sync.dart';
@@ -16,13 +12,17 @@ import 'code.dart';
 import 'calendar.dart';
 import 'update.dart';
 
-final llmRegistryProvider = Provider<Map<String, LLMProvider>>((_) => {
-      'claude': ClaudeProvider(),
-      'gemini': GeminiProvider(),
-      'groq': GroqProvider(),
-      'ollama': OllamaProvider(),
-      'custom': CustomProvider(),
-    });
+/// The set of LLM providers the active config defines. Because [providerFor]
+/// routes by protocol, this is NOT limited to a hardcoded id list — every
+/// configured provider (built-in or user-added) gets an entry, so you can add
+/// unlimited providers for each compatible protocol.
+final llmRegistryProvider =
+    Provider<Map<String, LLMProvider>>((ref) {
+  final config = ref.watch(configProvider);
+  return {
+    for (final p in config.providers.values) p.id: providerFor(p),
+  };
+});
 
 final sessionsProvider =
     NotifierProvider<SessionsNotifier, SessionsState>(SessionsNotifier.new);

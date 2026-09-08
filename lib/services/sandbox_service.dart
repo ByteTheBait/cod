@@ -6,13 +6,47 @@ enum SandboxType { docker, restricted }
 
 enum ContainerStatus { idle, starting, running, error }
 
-// Environment variables too sensitive to expose to agent-run commands
+// Environment variables too sensitive to expose to agent-run commands.
+// Keep this conservative but broad: anything a command could read that would
+// be damaging if printed. The *values* of these are also redacted from any
+// command output (see _redact), so a command can't silently exfiltrate them
+// via the shell even if a sibling env var slips through.
 const _stripEnv = {
   'AWS_SECRET_ACCESS_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_SESSION_TOKEN',
-  'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY',
-  'GITHUB_TOKEN', 'GH_TOKEN', 'NPM_TOKEN', 'PYPI_TOKEN',
-  'DOCKER_PASSWORD', 'GOOGLE_APPLICATION_CREDENTIALS',
+  'AWS_SHARED_CREDENTIALS_FILE', 'AZURE_CLIENT_SECRET', 'AZURE_TENANT_ID',
+  'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GEMINI_API_KEY_1',
+  'GEMINI_API_KEY_2', 'GROQ_API_KEY', 'MISTRAL_API_KEY', 'COHERE_API_KEY',
+  'GITHUB_TOKEN', 'GH_TOKEN', 'GITLAB_TOKEN', 'NPM_TOKEN', 'YARN_NPM_AUTH_TOKEN',
+  'PYPI_TOKEN', 'TWINE_PASSWORD', 'DOCKER_PASSWORD', 'DOCKER_REGISTRY_PASSWORD',
+  'GOOGLE_APPLICATION_CREDENTIALS', 'GOOGLE_CLIENT_SECRET', 'SUPABASE_SERVICE_ROLE',
+  'SSH_PRIVATE_KEY', 'PGPASSWORD', 'MYSQL_PWD', 'REDIS_PASSWORD', 'DATABASE_URL',
+  'HEROKU_API_KEY', 'NETLIFY_AUTH_TOKEN', 'VERCEL_TOKEN', 'SLACK_TOKEN',
+  'SENTRY_AUTH_TOKEN', 'STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY',
+  'GCLOUD_KEYFILE_PATH', 'GOOGLE_PROJECT_ID', 'SPACES_ACCESS_KEY',
+  'SPACES_SECRET_KEY', 'GCP_SA_KEY', 'SNOWFLAKE_PASSWORD', 'JIRA_API_TOKEN',
 };
+
+/// Redact known secret values out of a string so a command cannot print them.
+/// Called on every merged output line in the restricted sandbox.
+String _redact(String text, Set<String> secretValues) {
+  if (secretValues.isEmpty || text.isEmpty) return text;
+  var out = text;
+  for (final v in secretValues) {
+    if (v.isEmpty || v.length < 4) continue; // avoid over-eager single-char scrubs
+    out = out.replaceAll(v, '[REDACTED]');
+  }
+  return out;
+}
+
+/// The set of current secret *values* (keys stripped from the env) so they can
+/// be redacted from output.
+Set<String> _currentSecretValues() {
+  final env = Platform.environment;
+  return {
+    for (final k in _stripEnv)
+      if (env[k] != null && env[k]!.isNotEmpty) env[k]!,
+  };
+}
 
 class SandboxService {
   SandboxType _type = SandboxType.restricted;
@@ -153,14 +187,8 @@ class SandboxService {
       _processStream(Process.start('docker', ['exec', _containerId!, 'sh', '-c', command]));
 
   Future<String> _execRestricted(String command, String? cwd) async {
-    // Build a sanitised environment
-    final env = Map<String, String>.from(Platform.environment);
-    for (final k in _stripEnv) {
-      env.remove(k);
-    }
-    // Normalise PATH to avoid picking up unexpected binaries
-    env['PATH'] =
-        '/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin';
+    final env = _sanitisedEnv();
+    final redact = _currentSecretValues();
 
     final r = await Process.run(
       'sh', ['-c', command],
@@ -168,34 +196,69 @@ class SandboxService {
       environment: env,
       runInShell: false,
     ).timeout(const Duration(seconds: 30));
-    return _mergeOutput(r);
+    return _redact(_mergeOutput(r), redact);
   }
 
   Stream<String> _execRestrictedStream(String command, String? cwd) {
-    final env = Map<String, String>.from(Platform.environment);
-    for (final k in _stripEnv) env.remove(k);
-    env['PATH'] = '/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin';
-    return _processStream(Process.start(
-      'sh', ['-c', command],
-      workingDirectory: (cwd != null && cwd.isNotEmpty) ? cwd : null,
-      environment: env,
-      runInShell: false,
-    ));
+    final env = _sanitisedEnv();
+    final redact = _currentSecretValues();
+    return _processStream(
+      Process.start(
+        'sh', ['-c', command],
+        workingDirectory: (cwd != null && cwd.isNotEmpty) ? cwd : null,
+        environment: env,
+        runInShell: false,
+      ),
+      redactValues: redact,
+    );
   }
 
-  // Merges stdout and stderr of a process into a single line stream
-  static Stream<String> _processStream(Future<Process> processFuture) async* {
+  /// Build a sanitised environment: strip known secrets and normalise PATH so
+  /// `./bin` surprises and shadowed system binaries can't be reached.
+  Map<String, String> _sanitisedEnv() {
+    final env = Map<String, String>.from(Platform.environment);
+    for (final k in _stripEnv) {
+      env.remove(k);
+    }
+    // Keep HOME visible for relative path convenience but drop any *_KEY files
+    // and shell rc files by not adding them (they're not in env anyway).
+    env['PATH'] =
+        '/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin';
+    return env;
+  }
+
+  // Merges stdout and stderr of a process into a single line stream.
+  // [redactValues] silently scrubs secret values from each emitted line.
+  static Stream<String> _processStream(
+    Future<Process> processFuture, {
+    Set<String> redactValues = const {},
+  }) async* {
     final process = await processFuture;
-    final ctrl = StreamController<String>();
-    int pending = 2;
-    void done() { if (--pending == 0) ctrl.close(); }
-    process.stdout.transform(utf8.decoder).transform(const LineSplitter())
-        .listen(ctrl.add, onDone: done, onError: (_) => done(), cancelOnError: false);
-    process.stderr.transform(utf8.decoder).transform(const LineSplitter())
-        .map((l) => 'stderr: $l')
-        .listen(ctrl.add, onDone: done, onError: (_) => done(), cancelOnError: false);
-    yield* ctrl.stream;
-    await process.exitCode;
+
+    // Guard against a runaway command that produces no output — kill it so
+    // the agent can't block forever waiting on a hung process.
+    final killTimer = Timer(const Duration(seconds: 30), () {
+      try {
+        process.kill(ProcessSignal.sigkill);
+      } catch (_) {}
+    });
+
+    try {
+      final ctrl = StreamController<String>();
+      int pending = 2;
+      void done() { if (--pending == 0) ctrl.close(); }
+      process.stdout.transform(utf8.decoder).transform(const LineSplitter())
+          .listen(
+              (l) => ctrl.add(_redact(l, redactValues)),
+              onDone: done, onError: (_) => done(), cancelOnError: false);
+      process.stderr.transform(utf8.decoder).transform(const LineSplitter())
+          .map((l) => _redact('stderr: $l', redactValues))
+          .listen(ctrl.add, onDone: done, onError: (_) => done(), cancelOnError: false);
+      yield* ctrl.stream;
+      await process.exitCode;
+    } finally {
+      killTimer.cancel();
+    }
   }
 
   String _mergeOutput(ProcessResult r) {

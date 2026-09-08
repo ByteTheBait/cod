@@ -4,17 +4,87 @@ import 'dart:io';
 import '../llm/agent_llm.dart';
 import '../llm/provider.dart';
 import '../models/config.dart';
+import '../models/subagent.dart';
 import '../models/task.dart';
 import '../models/tool.dart';
 import 'background_service.dart';
+import '../utils/security.dart';
 import 'package:http/http.dart' as http;
 
 const int _maxFileBytes = 32768;
 
-final _blockedCommands = RegExp(
-  r'\b(sudo|rm\s+-rf|dd\s+if|mkfs|format|fdisk)\b',
-  caseSensitive: false,
-);
+/// Tools the agent is allowed to run — anything else is refused. This is a
+/// belt-and-braces safety net for the "restricted" sandbox: it never runs
+/// arbitrary binaries, only a curated allow-list, so a typo or an LLM
+/// hallucination can't reach the system. Extend this list deliberately.
+const _allowedCommands = {
+  'ls', 'cat', 'head', 'tail', 'grep', 'find', 'wc', 'sort', 'uniq',
+  'sed', 'awk', 'diff', 'echo', 'pwd', 'which', 'env', 'mkdir', 'touch',
+  'cp', 'mv', 'chmod', 'chown', 'df', 'du', 'file', 'tar', 'unzip', 'zip',
+  'curl', 'wget', 'git', 'dart', 'flutter', 'dartfmt',
+};
+
+/// Detect destructive / high-risk shell commands. Returns a human-readable
+/// reason, or null if the command is (heuristically) acceptable.
+///
+/// This is a safety net, not a security boundary — the true boundary for the
+/// agent is the Docker sandbox. Blocking here prevents the most obvious
+/// foot-guns and LLM hallucinated `rm -rf` / drive-wipe sequences even when
+/// the sandbox is unavailable.
+String? _whyBlocked(String command) {
+  final normalized = command
+      .split(RegExp(r'\s+'))
+      .where((t) => t.isNotEmpty)
+      .join(' ');
+
+  final lower = normalized.toLowerCase();
+
+  // Clear the environment of secrets is already handled at exec time; here we
+  // refuse commands that trivially exfiltrate the whole env or home.
+  if (RegExp(r'(env|printenv|cat\s+[~/]?\.(env|zshrc|bashrc|profile)\b)').hasMatch(lower)) {
+    return 'refuses to dump environment variables / dotfiles';
+  }
+  // Fork bomb + obvious process/disk/network destruction.
+  if (lower.contains(':{():|:&};:') ||
+      RegExp(r'\b(reboot|shutdown|poweroff|halt)\b').hasMatch(lower)) {
+    return 'system control / fork-bomb sequence';
+  }
+  // `rm` with recursive+force (any spacing/flag order) or pointed at a system
+  // root. `rm -rf file` from within a *working dir* is allowed — only root &
+  // force combos are refused here.
+  if (RegExp(r'\brm\b').hasMatch(lower) &&
+      (RegExp(r'-(\w*r[ro]*\w*f|r[ro]*\w*f|\w*f\w*r[ro]*\w*f)').hasMatch(normalized) ||
+       RegExp(r'/(root|home|usr|bin|sbin|etc|var|tmp)\b|\b(/?(\w+)?/)?[/*]$').hasMatch(normalized))) {
+    return '`rm` recursive-force onto a system path';
+  }
+  // Drive/partition wipes and low-level block writes.
+  if (RegExp(r'\b(mkfs|fdisk|gdisk|cfdisk|parted|shred|wipefs)\b').hasMatch(lower) ||
+      RegExp(r'\bdd\b.+\bof=/dev/').hasMatch(lower) ||
+      RegExp(r'\bcat\b.+\b>\s*/dev/').hasMatch(lower)) {
+    return 'drive / partition low-level operation';
+  }
+  // Escape the sandbox via shell-outs inside the agent (defense in depth).
+  if (RegExp(r'(\bnsenter\b|\bdocker\s+run\b|\bchroot\b|\bvault\b)').hasMatch(lower)) {
+    return 'sandbox escape / container control';
+  }
+  return null;
+}
+
+/// Allow-list + block-list guard. Returns a refusal message, or null if the
+/// command may run.
+String? _commandGuard(String command) {
+  final blocked = _whyBlocked(command);
+  if (blocked != null) return blocked;
+
+  final bin = command.trim().split(RegExp(r'\s+')).first
+      .split('/').last
+      .replaceAll(RegExp(r'^[.,]'), '')
+      .split(';')[0];
+  if (!_allowedCommands.contains(bin) && !bin.contains('.')) {
+    return 'refuses unknown command "$bin" (not in the allow-list).';
+  }
+  return null;
+}
 
 /// A background daemon service that continuously monitors and executes tasks
 class TaskDaemon {
@@ -336,6 +406,60 @@ class AgentService {
         'required': ['id'],
       },
     ),
+    Tool(
+      name: 'delegate',
+      description: 'Hand off a focused task to a specialised sub-agent and '
+          'wait for its result. Use this when a task is better handled by a '
+          'dedicated agent (e.g. explore, debug, refactor, test, or a custom '
+          'one). The sub-agent runs with its own system prompt, tool set, and '
+          'model, then returns a summary you can act on.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'subagent': {
+            'type': 'string',
+            'description': 'The id or name of the sub-agent to delegate to.',
+          },
+          'task': {
+            'type': 'string',
+            'description': 'A clear, self-contained description of the task '
+                'for the sub-agent to complete.',
+          },
+        },
+        'required': ['subagent', 'task'],
+      },
+    ),
+    Tool(
+      name: 'delegate_parallel',
+      description: 'Hand off several independent tasks to sub-agents and run '
+          'them concurrently, then return all their summaries. Use this to '
+          'parallelise work across multiple specialised agents (e.g. explore '
+          'several areas at once). Each entry names a sub-agent and a task.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'delegations': {
+            'type': 'array',
+            'description': 'A list of sub-agent delegations to run in parallel.',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'subagent': {
+                  'type': 'string',
+                  'description': 'The id or name of the sub-agent.',
+                },
+                'task': {
+                  'type': 'string',
+                  'description': 'A clear, self-contained task description.',
+                },
+              },
+              'required': ['subagent', 'task'],
+            },
+          },
+        },
+        'required': ['delegations'],
+      },
+    ),
   ];
 
   static final _markCompleteTool = Tool(
@@ -392,12 +516,23 @@ class AgentService {
     _markCompleteTool,
   ];
 
+  /// Build the tool list for a [SubAgent] from its allowed tool names.
+  /// Unknown names are ignored so a stale config never breaks the agent.
+  static List<Tool> toolsFor(SubAgent agent) {
+    final byName = {for (final t in codeTools) t.name: t};
+    return agent.tools
+        .map((name) => byName[name])
+        .whereType<Tool>()
+        .toList();
+  }
+
   Stream<AgentEvent> run({
     required String initialPrompt,
     required List<Tool> tools,
     required String model,
     required String apiKey,
     required String providerId,
+    ProviderProtocol? protocol,
     String? baseUrl,
     String? system,
     String? workingDir,
@@ -405,9 +540,25 @@ class AgentService {
     void Function(List<Map<String, dynamic>>)? onMessagesUpdate,
     Future<String> Function(String command)? commandRunner,
     Stream<String> Function(String command)? commandStreamRunner,
+    /// If provided, called before each tool executes. Return false to skip
+    /// the tool without running it (e.g. user declined approval).
+    Future<bool> Function(ToolCall call)? onToolApprove,
+    /// If provided, called when the agent invokes the `delegate` tool.
+    /// Receives the sub-agent id/name and the task description, and should
+    /// run the sub-agent and return its final summary.
+    Future<String> Function(String subagent, String task)? delegateRunner,
+    /// If provided, called when the agent invokes `delegate_parallel`.
+    /// Receives a list of (subagent, task) pairs and should run them
+    /// concurrently, returning a combined summary.
+    Future<String> Function(List<(String, String)> delegations)?
+        parallelDelegateRunner,
     int maxIterations = 20,
   }) async* {
     final llm = AgentLLM();
+    // Resolve the wire protocol. When not passed explicitly, infer it from
+    // the provider id for backward compatibility so existing callers continue
+    // to work unchanged.
+    final resolvedProtocol = protocol ?? _protocolForLegacyId(providerId);
     final messages = <Map<String, dynamic>>[
       ...history,
       {'role': 'user', 'content': initialPrompt},
@@ -421,11 +572,14 @@ class AgentService {
           tools: tools,
           model: model,
           apiKey: apiKey,
-          providerId: providerId,
+          protocol: resolvedProtocol,
           baseUrl: baseUrl,
           system: system,
         );
       } catch (e) {
+        // Persist whatever context we have so the next run doesn't start from
+        // stale history. This keeps the conversation coherent across retries.
+        onMessagesUpdate?.call(List.unmodifiable(messages));
         yield AgentError('LLM error: $e');
         return;
       }
@@ -459,6 +613,20 @@ class AgentService {
       final toolResults = <Map<String, dynamic>>[];
       for (final tc in response.toolCalls) {
         yield AgentToolStart(tc);
+
+        // Ask for approval first if a hook is registered. Skip if declined.
+        if (onToolApprove != null && !await onToolApprove(tc)) {
+          final denied = 'User declined to run **${tc.name}**. '
+              'Explain what you need and adjust, or stop.';
+          yield AgentToolDone(tc.name, denied);
+          toolResults.add({
+            'type': 'tool_result',
+            'tool_use_id': tc.id,
+            'content': denied,
+          });
+          continue;
+        }
+
         String result;
         if (tc.name == 'run_command') {
           final cmd = tc.input['command'] as String;
@@ -471,6 +639,16 @@ class AgentService {
             yield AgentCommandOutput(line);
           }
           result = buf.isEmpty ? '(no output)' : buf.toString().trimRight();
+        } else if (tc.name == 'delegate') {
+          result = delegateRunner != null
+              ? await delegateRunner(
+                  tc.input['subagent'] as String,
+                  tc.input['task'] as String)
+              : 'Delegation is not available in this context.';
+        } else if (tc.name == 'delegate_parallel') {
+          result = parallelDelegateRunner != null
+              ? await parallelDelegateRunner(_parseDelegations(tc.input))
+              : 'Parallel delegation is not available in this context.';
         } else {
           result = await _execute(tc, workingDir: workingDir, commandRunner: commandRunner);
         }
@@ -486,6 +664,24 @@ class AgentService {
 
     onMessagesUpdate?.call(List.unmodifiable(messages));
     yield const AgentError('Max iterations reached.');
+  }
+
+  /// Backward-compatible inference of wire protocol from a legacy provider id,
+  /// so existing callers that only pass `providerId` keep working. New callers
+  /// pass `protocol` explicitly, which takes precedence.
+  static ProviderProtocol _protocolForLegacyId(String providerId) =>
+      switch (providerId) {
+        'gemini' => ProviderProtocol.gemini,
+        'claude' => ProviderProtocol.anthropic,
+        _ => ProviderProtocol.openai,
+      };
+
+  List<(String, String)> _parseDelegations(Map<String, dynamic> input) {
+    final raw = input['delegations'] as List? ?? const [];
+    return raw.map((d) {
+      final m = d as Map<String, dynamic>;
+      return (m['subagent'] as String, m['task'] as String);
+    }).toList();
   }
 
   Future<String> _execute(
@@ -527,6 +723,8 @@ class AgentService {
         'web_search' => _webSearch(
             tc.input['query'] as String,
             (tc.input['numResults'] as int?) ?? 5),
+        'delegate' => 'Delegation is not available in this context.',
+        'delegate_parallel' => 'Parallel delegation is not available in this context.',
         _ => 'Unknown tool: ${tc.name}',
       };
     } catch (e) {
@@ -634,17 +832,22 @@ class AgentService {
     if (Platform.isIOS || Platform.isAndroid) {
       return 'Shell execution is not supported on this platform.';
     }
-    if (_blockedCommands.hasMatch(command)) {
-      return 'Blocked: command contains a potentially destructive operation.';
+    final guard = _commandGuard(command);
+    if (guard != null) {
+      return 'Blocked: the requested command $guard';
     }
+    final redact = currentSecretValues();
     final result = await Process.run(
       'sh',
       ['-c', command],
       workingDirectory: workingDir,
+      // Secret scrubbing: never let an agent-run command read cloud
+      // credentials from the environment (same policy as the sandbox).
+      environment: sanitizedEnvironment(),
       runInShell: false,
     ).timeout(const Duration(seconds: 30));
-    final out = (result.stdout as String).trim();
-    final err = (result.stderr as String).trim();
+    final out = redactSecrets((result.stdout as String).trim(), redact);
+    final err = redactSecrets((result.stderr as String).trim(), redact);
     final parts = [if (out.isNotEmpty) out, if (err.isNotEmpty) 'stderr:\n$err'];
     final combined = parts.join('\n');
     if (combined.length > _maxFileBytes) {
@@ -658,33 +861,51 @@ class AgentService {
       yield 'Shell execution is not supported on this platform.';
       return;
     }
-    if (_blockedCommands.hasMatch(command)) {
-      yield 'Blocked: command contains a potentially destructive operation.';
+    final guard = _commandGuard(command);
+    if (guard != null) {
+      yield 'Blocked: the requested command $guard';
       return;
     }
+    final redact = currentSecretValues();
     final process = await Process.start(
       'sh', ['-c', command],
       workingDirectory: workingDir,
+      // Secret scrubbing: same policy as the sandbox.
+      environment: sanitizedEnvironment(),
       runInShell: false,
     );
-    final ctrl = StreamController<String>();
-    int pending = 2;
-    void done() { if (--pending == 0) ctrl.close(); }
-    process.stdout.transform(utf8.decoder).transform(const LineSplitter())
-        .listen(ctrl.add, onDone: done, onError: (_) => done(), cancelOnError: false);
-    process.stderr.transform(utf8.decoder).transform(const LineSplitter())
-        .map((l) => 'stderr: $l')
-        .listen(ctrl.add, onDone: done, onError: (_) => done(), cancelOnError: false);
-    int totalChars = 0;
-    await for (final line in ctrl.stream) {
-      totalChars += line.length + 1;
-      if (totalChars > _maxFileBytes) {
-        yield '... (output truncated)';
-        break;
+
+    // Guard against a runaway/hung command — kill it after 30s even if it
+    // produced no output, so the agent loop can't block forever.
+    final killTimer = Timer(const Duration(seconds: 30), () {
+      try {
+        process.kill(ProcessSignal.sigkill);
+      } catch (_) {}
+    });
+
+    try {
+      final ctrl = StreamController<String>();
+      int pending = 2;
+      void done() { if (--pending == 0) ctrl.close(); }
+      process.stdout.transform(utf8.decoder).transform(const LineSplitter())
+          .listen((l) => ctrl.add(redactSecrets(l, redact)),
+              onDone: done, onError: (_) => done(), cancelOnError: false);
+      process.stderr.transform(utf8.decoder).transform(const LineSplitter())
+          .map((l) => redactSecrets('stderr: $l', redact))
+          .listen(ctrl.add, onDone: done, onError: (_) => done(), cancelOnError: false);
+      int totalChars = 0;
+      await for (final line in ctrl.stream) {
+        totalChars += line.length + 1;
+        if (totalChars > _maxFileBytes) {
+          yield '... (output truncated)';
+          break;
+        }
+        yield line;
       }
-      yield line;
+      await process.exitCode;
+    } finally {
+      killTimer.cancel();
     }
-    await process.exitCode;
   }
 
   Future<String> _searchFiles(String pattern, String directory, String? workingDir) async {

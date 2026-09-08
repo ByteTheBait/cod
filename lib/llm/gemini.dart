@@ -20,8 +20,17 @@ class GeminiProvider implements LLMProvider {
   }) async* {
     final client = http.Client();
     try {
-      final url =
-          'https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?key=$apiKey&alt=sse';
+      String endpoint = (baseUrl?.isNotEmpty == true
+          ? baseUrl!
+          : 'https://generativelanguage.googleapis.com').replaceAll(RegExp(r'/+$'), '');
+      if (endpoint.endsWith(':streamGenerateContent')) {
+        // already the full streaming RPC — leave as-is
+      } else if (endpoint.endsWith(':generateContent')) {
+        endpoint = endpoint.replaceAll(':generateContent', ':streamGenerateContent');
+      } else {
+        endpoint = '$endpoint/v1beta/models/$model:streamGenerateContent';
+      }
+      final url = '$endpoint?key=$apiKey&alt=sse';
 
       final systemParts = messages
           .where((m) => m.role == MessageRole.system)

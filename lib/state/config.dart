@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/config.dart';
+import '../models/subagent.dart';
 import '../services/daemon_service.dart';
 
 class ConfigNotifier extends Notifier<AppConfig> {
@@ -18,6 +19,9 @@ class ConfigNotifier extends Notifier<AppConfig> {
   static const _prefTaskTtlDays = 'task_ttl_days';
   static const _prefAgentMaxIterations = 'agent_max_iterations';
   static const _prefDaemonMaxIterations = 'daemon_max_iterations';
+  static const _prefCustomSubAgents = 'custom_subagents';
+  static const _prefShortcuts = 'shortcuts';
+  static const _prefCustomProviders = 'custom_providers';
   static String _prefKey(String provider) => 'key_$provider';
   static String _prefModel(String provider) => 'model_$provider';
   static String _prefBaseUrl(String provider) => 'base_$provider';
@@ -60,7 +64,14 @@ class ConfigNotifier extends Notifier<AppConfig> {
     final taskTtlDays = prefs.getInt(_prefTaskTtlDays) ?? 2;
     final agentMaxIterations = prefs.getInt(_prefAgentMaxIterations) ?? 20;
     final daemonMaxIterations = prefs.getInt(_prefDaemonMaxIterations) ?? 5;
+    final customSubAgents = _loadCustomSubAgents(prefs);
+    final shortcuts = _loadShortcuts(prefs);
     final providers = Map<String, ProviderConfig>.from(state.providers);
+    // Restore user-defined providers (protocol + endpoint + models + key),
+    // merged over defaults so built-ins still pick up their persisted values.
+    for (final p in _loadCustomProviders(prefs)) {
+      providers[p.id] = p;
+    }
     for (final id in providers.keys) {
       final key = prefs.getString(_prefKey(id)) ?? '';
       final model = prefs.getString(_prefModel(id)) ?? providers[id]!.selectedModel;
@@ -85,8 +96,204 @@ class ConfigNotifier extends Notifier<AppConfig> {
       taskTtlDays: taskTtlDays,
       agentMaxIterations: agentMaxIterations,
       daemonMaxIterations: daemonMaxIterations,
+      customSubAgents: customSubAgents,
+      shortcuts: shortcuts,
     );
     DaemonService.instance.apply(daemonMode, nightlyTime);
+  }
+
+  Map<String, String> _loadShortcuts(SharedPreferences prefs) {
+    final raw = prefs.getString(_prefShortcuts);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      return map.map((k, v) => MapEntry(k, v as String));
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> _persistShortcuts() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefShortcuts, jsonEncode(state.shortcuts));
+  }
+
+  /// Rebind a keyboard shortcut. Pass an empty [key] to reset to default.
+  Future<void> setShortcut(String id, String key) async {
+    final shortcuts = Map<String, String>.from(state.shortcuts);
+    if (key.isEmpty) {
+      shortcuts.remove(id);
+    } else {
+      shortcuts[id] = key;
+    }
+    state = state.copyWith(shortcuts: shortcuts);
+    await _persistShortcuts();
+  }
+
+  List<SubAgent> _loadCustomSubAgents(SharedPreferences prefs) {
+    final raw = prefs.getString(_prefCustomSubAgents);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((e) => SubAgent.fromJson(e as Map<String, dynamic>))
+          .where((a) => !a.isDefault)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _persistCustomSubAgents() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = jsonEncode(
+        state.customSubAgents.map((a) => a.toJson()).toList());
+    await prefs.setString(_prefCustomSubAgents, raw);
+  }
+
+  /// Add a new user-defined subagent.
+  Future<void> addSubAgent(SubAgent agent) async {
+    state = state.copyWith(
+        customSubAgents: [...state.customSubAgents, agent]);
+    await _persistCustomSubAgents();
+  }
+
+  /// Update an existing custom subagent (by id).
+  Future<void> updateSubAgent(SubAgent agent) async {
+    state = state.copyWith(
+        customSubAgents: state.customSubAgents
+            .map((a) => a.id == agent.id ? agent : a)
+            .toList());
+    await _persistCustomSubAgents();
+  }
+
+  /// Remove a custom subagent (by id). Built-in defaults cannot be removed.
+  Future<void> removeSubAgent(String id) async {
+    state = state.copyWith(
+        customSubAgents:
+            state.customSubAgents.where((a) => a.id != id).toList());
+    await _persistCustomSubAgents();
+  }
+
+  List<ProviderConfig> _loadCustomProviders(SharedPreferences prefs) {
+    final raw = prefs.getString(_prefCustomProviders);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((e) => _providerFromJson(e as Map<String, dynamic>))
+          .whereType<ProviderConfig>()
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _persistCustomProviders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final custom = state.providers.values
+        .where((p) => !_builtinProviderIds.contains(p.id))
+        .toList();
+    await prefs.setString(
+        _prefCustomProviders, jsonEncode(custom.map(_providerToJson).toList()));
+  }
+
+  static const _builtinProviderIds = {
+    'claude', 'gemini', 'groq', 'ollama', 'custom',
+  };
+
+  static Map<String, dynamic> _providerToJson(ProviderConfig p) => {
+        'id': p.id,
+        'name': p.name,
+        'protocol': p.protocol.name,
+        'apiKey': p.apiKey,
+        'baseUrl': p.baseUrl,
+        'selectedModel': p.selectedModel,
+        'models': p.models,
+        'featureModels': p.featureModels,
+      };
+
+  static ProviderConfig? _providerFromJson(Map<String, dynamic> j) {
+    try {
+      final id = j['id'] as String;
+      final protocol = ProviderProtocol.values
+          .firstWhere((e) => e.name == (j['protocol'] as String?),
+              orElse: () => ProviderProtocol.openai);
+      final featureModels = (j['featureModels'] as Map? ?? {})
+          .map((k, v) => MapEntry(k as String, v as String));
+      return ProviderConfig(
+        id: id,
+        name: j['name'] as String? ?? id,
+        protocol: protocol,
+        apiKey: j['apiKey'] as String? ?? '',
+        baseUrl: j['baseUrl'] as String? ?? '',
+        selectedModel: j['selectedModel'] as String? ?? '',
+        models: (j['models'] as List? ?? [
+          'model'
+        ]).map((e) => e as String).toList(),
+        featureModels: featureModels,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Add a user-defined provider. Returns an error message, or null on success.
+  Future<String?> addProvider(ProviderConfig provider) async {
+    if (provider.id.isEmpty || provider.name.isEmpty) {
+      return 'Provider needs an id and a name.';
+    }
+    if (state.providers.containsKey(provider.id)) {
+      return 'A provider with id "${provider.id}" already exists.';
+    }
+    final providers = Map<String, ProviderConfig>.from(state.providers);
+    providers[provider.id] = provider;
+    state = state.copyWith(providers: providers);
+    await _persistCustomProviders();
+    return null;
+  }
+
+  /// Update any provider (built-in key/url/model, or a fully custom one).
+  Future<void> updateProvider(ProviderConfig provider) async {
+    final providers = Map<String, ProviderConfig>.from(state.providers);
+    providers[provider.id] = provider;
+    state = state.copyWith(providers: providers);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefKey(provider.id), provider.apiKey);
+    await prefs.setString(_prefModel(provider.id), provider.selectedModel);
+    await prefs.setString(_prefBaseUrl(provider.id), provider.baseUrl);
+    if (!_builtinProviderIds.contains(provider.id)) {
+      await _persistCustomProviders();
+    }
+  }
+
+  /// Remove a user-defined provider. Built-ins cannot be removed.
+  Future<String?> removeProvider(String id) async {
+    if (_builtinProviderIds.contains(id)) {
+      return 'Built-in providers cannot be removed.';
+    }
+    final providers = Map<String, ProviderConfig>.from(state.providers)
+      ..remove(id);
+    final newActive = state.activeProviderId == id
+        ? (providers.keys.isNotEmpty ? providers.keys.first : 'claude')
+        : state.activeProviderId;
+    state = AppConfig(
+      activeProviderId: newActive,
+      providers: providers,
+      daemonMode: state.daemonMode,
+      nightlyTime: state.nightlyTime,
+      taskTtlDays: state.taskTtlDays,
+      agentMaxIterations: state.agentMaxIterations,
+      daemonMaxIterations: state.daemonMaxIterations,
+      customSubAgents: state.customSubAgents,
+      shortcuts: state.shortcuts,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await _persistCustomProviders();
+    await prefs.remove(_prefKey(id));
+    await prefs.remove(_prefModel(id));
+    await prefs.remove(_prefBaseUrl(id));
+    return null;
   }
 
   Future<void> setActiveProvider(String id) async {

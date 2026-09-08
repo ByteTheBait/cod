@@ -72,19 +72,38 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
 
     setState(() { _agentRunning = true; _agentLog.clear(); });
 
+    final tasksNotifier = ref.read(tasksProvider.notifier);
+    tasksNotifier.markRead(widget.taskId);
+
     final skillDef = SkillDef.of(task.skill);
     final prompt = 'Complete this task:\n'
         'Title: ${task.title}\n'
         '${task.description.isNotEmpty ? 'Description: ${task.description}\n' : ''}'
         'Status: ${task.status.label}';
 
+    // Show the agent run in the chat thread too.
+    await tasksNotifier.addThreadMessage(widget.taskId, Message.user(prompt));
+    _scrollToBottom();
+
     final service = AgentService();
+    var runningText = '';
+    var toolEntryActive = false;
+
+    void flushText() {
+      if (runningText.trim().isNotEmpty) {
+        tasksNotifier.addThreadMessage(
+            widget.taskId, Message.assistant(runningText.trim()));
+        runningText = '';
+      }
+    }
+
     await for (final event in service.run(
       initialPrompt: prompt,
       tools: skillDef.tools,
       model: config.modelFor(Feature.tasks),
       apiKey: config.active.apiKey,
       providerId: config.activeProviderId,
+      protocol: config.active.protocol,
       baseUrl: config.active.baseUrl,
       system: skillDef.system,
       maxIterations: config.agentMaxIterations,
@@ -92,27 +111,47 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       switch (event) {
         case AgentText(:final text):
           if (text.isNotEmpty) {
+            runningText += text + '\n';
             setState(() => _agentLog.add(_AgentEntry.text(text)));
           }
         case AgentToolStart(:final call):
           final label = '${call.name}(${_inputSummary(call.input)})';
+          flushText();
+          if (!toolEntryActive) {
+            tasksNotifier.addThreadMessage(
+                widget.taskId,
+                Message.assistant('🤖 [agent] running tool: **$label**'));
+            toolEntryActive = true;
+          }
           setState(() => _agentLog.add(_AgentEntry.toolCall(label)));
         case AgentCommandOutput():
           break; // task agent doesn't stream command output
         case AgentToolDone(:final toolName, :final result):
-          setState(() => _agentLog.add(_AgentEntry.toolResult(toolName, result)));
+          flushText();
+          if (toolEntryActive) {
+            _scrollToBottom();
+          }
           if (toolName == 'mark_complete') {
+            tasksNotifier.addThreadMessage(
+              widget.taskId,
+              Message.assistant('✅ Done.\n\n$result'),
+            );
             ref.read(tasksProvider.notifier).cycleStatusTo(
                 widget.taskId, TaskStatus.done);
           }
+          setState(() => _agentLog.add(_AgentEntry.toolResult(toolName, result)));
         case AgentComplete():
           break;
         case AgentError(:final message):
+          flushText();
           setState(() => _agentLog.add(_AgentEntry.error(message)));
       }
     }
 
+    flushText();
     setState(() => _agentRunning = false);
+    tasksNotifier.markRead(widget.taskId);
+    _scrollToBottom();
   }
 
   String _inputSummary(Map<String, dynamic> input) {

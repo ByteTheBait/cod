@@ -13,6 +13,19 @@ class CustomProvider implements LLMProvider {
   @override
   String get name => 'Custom';
 
+  /// OpenAI-compatible endpoints take `/v1/chat/completions` under their base.
+  /// If the supplied base already ends in `/v1`, `/chat/completions`, or is a
+  /// local gateway that routes `/chat/completions` directly, avoid double
+  /// suffixing. This mirrors the agent's builder so streaming and tool-use hit
+  /// the same endpoint for a given base URL.
+  static String openAIUrl(String? baseUrl) {
+    var base = (baseUrl?.isNotEmpty == true ? baseUrl! : 'https://api.openai.com/v1');
+    base = base.replaceAll(RegExp(r'/+$'), '');
+    if (base.endsWith('/chat/completions')) return base;
+    if (base.endsWith('/v1') || base.endsWith('/v1beta')) return '$base/chat/completions';
+    return '$base/v1/chat/completions';
+  }
+
   @override
   Stream<String> stream({
     required List<Message> messages,
@@ -21,10 +34,7 @@ class CustomProvider implements LLMProvider {
     String? baseUrl,
     int maxTokens = 4096,
   }) async* {
-    final base = (baseUrl != null && baseUrl.isNotEmpty)
-        ? baseUrl
-        : 'https://api.openai.com/v1';
-    final url = '$base/chat/completions';
+    final url = openAIUrl(baseUrl);
 
     final client = http.Client();
     try {

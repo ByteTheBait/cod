@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'command.dart';
+import 'subagent.dart';
 
 /// The distinct AI features in the app. Each can use a different model from
 /// the same active provider.
@@ -40,9 +42,40 @@ extension DaemonModeX on DaemonMode {
       };
 }
 
+/// Wire protocol an [LLMProvider] speaks. Any number of providers can be added
+/// and each is routed by protocol rather than by a fixed id, so the app is not
+/// limited to a hardcoded set — you can add unlimited providers for each
+/// compatible protocol.
+enum ProviderProtocol { anthropic, openai, gemini }
+
+extension ProviderProtocolX on ProviderProtocol {
+  String get label => switch (this) {
+        ProviderProtocol.anthropic => 'Anthropic-compatible',
+        ProviderProtocol.openai => 'OpenAI-compatible',
+        ProviderProtocol.gemini => 'Gemini-compatible',
+      };
+
+  /// The default API base URL template for this protocol, or null when the
+  /// provider must supply one.
+  String? get defaultBaseUrl => switch (this) {
+        ProviderProtocol.anthropic => 'https://api.anthropic.com',
+        ProviderProtocol.openai => 'https://api.openai.com/v1',
+        ProviderProtocol.gemini => 'https://generativelanguage.googleapis.com',
+      };
+
+  /// A stable identity used for badges/colour selection, so provider colouring
+  /// doesn't require knowing every provider id up front.
+  String get badgeKey => switch (this) {
+        ProviderProtocol.anthropic => 'claude',
+        ProviderProtocol.openai => 'custom',
+        ProviderProtocol.gemini => 'gemini',
+      };
+}
+
 class ProviderConfig {
   final String id;
   final String name;
+  final ProviderProtocol protocol;
   final String apiKey;
   final String baseUrl;
   final String selectedModel;
@@ -54,6 +87,7 @@ class ProviderConfig {
   const ProviderConfig({
     required this.id,
     required this.name,
+    this.protocol = ProviderProtocol.openai,
     this.apiKey = '',
     this.baseUrl = '',
     required this.selectedModel,
@@ -66,18 +100,22 @@ class ProviderConfig {
       featureModels[feature.name] ?? selectedModel;
 
   ProviderConfig copyWith({
+    String? name,
+    ProviderProtocol? protocol,
     String? apiKey,
     String? baseUrl,
     String? selectedModel,
+    List<String>? models,
     Map<String, String>? featureModels,
   }) =>
       ProviderConfig(
         id: id,
-        name: name,
+        name: name ?? this.name,
+        protocol: protocol ?? this.protocol,
         apiKey: apiKey ?? this.apiKey,
         baseUrl: baseUrl ?? this.baseUrl,
         selectedModel: selectedModel ?? this.selectedModel,
-        models: models,
+        models: models ?? this.models,
         featureModels: featureModels ?? this.featureModels,
       );
 }
@@ -93,6 +131,16 @@ class AppConfig {
   final int agentMaxIterations;
   /// Max iterations the daemon runs per task before stopping.
   final int daemonMaxIterations;
+  /// User-defined subagents (in addition to the built-in defaults).
+  final List<SubAgent> customSubAgents;
+  /// User-rebound keyboard shortcuts (keyed by shortcut id).
+  final Map<String, String> shortcuts;
+  /// Whether the Minnow companion sync (Supabase, using the public anon key)
+  /// is enabled. Defaults to true to preserve existing behaviour, but if the
+  /// Supabase project does not have strict Row-Level-Security with per-user
+  /// policies, the anon key can read/write any user's tasks. Set false to
+  /// disable remote sync and rely on local storage only.
+  final bool minnowSyncEnabled;
 
   const AppConfig({
     required this.activeProviderId,
@@ -102,7 +150,36 @@ class AppConfig {
     this.taskTtlDays = 2,
     this.agentMaxIterations = 20,
     this.daemonMaxIterations = 5,
+    this.customSubAgents = const [],
+    this.shortcuts = const {},
+    this.minnowSyncEnabled = true,
   });
+
+  /// The key combination for a shortcut id, or its default if not rebound.
+  String shortcutKey(String id) {
+    final custom = shortcuts[id];
+    if (custom != null && custom.isNotEmpty) return custom;
+    for (final s in ShortcutDefaults.all) {
+      if (s.id == id) return s.effectiveKey;
+    }
+    return '';
+  }
+
+  /// All subagents available to the code agent: built-in defaults first,
+  /// then any user-defined ones.
+  List<SubAgent> get subAgents => [...SubAgentDefaults.all, ...customSubAgents];
+
+  SubAgent subAgentById(String id) {
+    for (final a in subAgents) {
+      if (a.id == id) return a;
+    }
+    return SubAgentDefaults.byId(id);
+  }
+
+  /// The model a subagent should use. Falls back to the Code feature's model
+  /// for the active provider when the subagent has no explicit override.
+  String modelForSubAgent(SubAgent agent) =>
+      agent.model?.isNotEmpty == true ? agent.model! : modelFor(Feature.code);
 
   ProviderConfig get active =>
       providers[activeProviderId] ?? providers.values.first;
@@ -118,6 +195,9 @@ class AppConfig {
     int? taskTtlDays,
     int? agentMaxIterations,
     int? daemonMaxIterations,
+    List<SubAgent>? customSubAgents,
+    Map<String, String>? shortcuts,
+    bool? minnowSyncEnabled,
   }) =>
       AppConfig(
         activeProviderId: activeProviderId ?? this.activeProviderId,
@@ -127,6 +207,9 @@ class AppConfig {
         taskTtlDays: taskTtlDays ?? this.taskTtlDays,
         agentMaxIterations: agentMaxIterations ?? this.agentMaxIterations,
         daemonMaxIterations: daemonMaxIterations ?? this.daemonMaxIterations,
+        customSubAgents: customSubAgents ?? this.customSubAgents,
+        shortcuts: shortcuts ?? this.shortcuts,
+        minnowSyncEnabled: minnowSyncEnabled ?? this.minnowSyncEnabled,
       );
 
   static AppConfig get defaults => AppConfig(
@@ -138,6 +221,8 @@ class AppConfig {
           'claude': const ProviderConfig(
             id: 'claude',
             name: 'Claude',
+            protocol: ProviderProtocol.anthropic,
+            baseUrl: 'https://api.anthropic.com',
             selectedModel: 'claude-sonnet-4-6',
             models: [
               'claude-sonnet-4-6',
@@ -148,6 +233,8 @@ class AppConfig {
           'gemini': const ProviderConfig(
             id: 'gemini',
             name: 'Gemini',
+            protocol: ProviderProtocol.gemini,
+            baseUrl: 'https://generativelanguage.googleapis.com',
             selectedModel: 'gemini-2.0-flash',
             models: [
               'gemini-2.0-flash',
@@ -158,6 +245,8 @@ class AppConfig {
           'groq': const ProviderConfig(
             id: 'groq',
             name: 'Groq',
+            protocol: ProviderProtocol.openai,
+            baseUrl: 'https://api.groq.com/openai/v1',
             selectedModel: 'llama-3.3-70b-versatile',
             models: [
               'llama-3.3-70b-versatile',
@@ -168,6 +257,7 @@ class AppConfig {
           'ollama': const ProviderConfig(
             id: 'ollama',
             name: 'Ollama',
+            protocol: ProviderProtocol.openai,
             baseUrl: 'http://localhost:11434',
             selectedModel: 'llama3.2',
             models: ['llama3.2', 'mistral', 'codellama', 'gemma2'],
@@ -175,6 +265,7 @@ class AppConfig {
           'custom': const ProviderConfig(
             id: 'custom',
             name: 'Custom',
+            protocol: ProviderProtocol.openai,
             baseUrl: 'https://api.openai.com/v1',
             selectedModel: 'gpt-4o',
             models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],

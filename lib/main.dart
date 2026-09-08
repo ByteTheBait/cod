@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:highlight/highlight.dart';
@@ -25,11 +26,22 @@ import 'package:highlight/languages/xml.dart';
 import 'package:highlight/languages/yaml.dart';
 import 'app.dart';
 
+/// The folder path passed as a command-line argument (e.g. `Cod /path/to/dir`).
+/// On macOS this is the first positional arg after the executable.
+String? _cliFolderArg() {
+  if (Platform.isIOS || Platform.isAndroid) return null;
+  final args = Platform.environment['COD_OPEN_FOLDER'];
+  if (args != null && args.isNotEmpty) return args;
+  return null;
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(url: kSupabaseUrl, anonKey: kSupabaseAnonKey);
   _registerLanguages();
-  runApp(const ProviderScope(child: CodApp()));
+  runApp(ProviderScope(
+    child: CodApp(initialFolder: _cliFolderArg()),
+  ));
 }
 
 void _registerLanguages() {

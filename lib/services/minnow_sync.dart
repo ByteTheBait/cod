@@ -145,6 +145,7 @@ class MinnowSync {
       model: config.modelFor(Feature.tasks),
       apiKey: config.active.apiKey,
       providerId: config.activeProviderId,
+      protocol: config.active.protocol,
       baseUrl: config.active.baseUrl,
       system: system,
       maxIterations: config.agentMaxIterations,

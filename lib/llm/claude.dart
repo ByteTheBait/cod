@@ -38,8 +38,13 @@ class ClaudeProvider implements LLMProvider {
         'messages': chatMessages,
       });
 
+      final endpoint = (baseUrl?.isNotEmpty == true
+          ? baseUrl!.replaceAll(RegExp(r'/+$'), '')
+          : 'https://api.anthropic.com') + '/v1/messages';
+      final uri = Uri.parse(endpoint);
+
       http.Request build() {
-        final r = http.Request('POST', Uri.parse('https://api.anthropic.com/v1/messages'));
+        final r = http.Request('POST', uri);
         r.headers.addAll({
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
