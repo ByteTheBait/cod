@@ -327,6 +327,24 @@ class GmailService {
     });
   }
 
+  Future<void> markUnread(String threadId) async {
+    await _post('threads/$threadId/modify', {
+      'addLabelIds': ['UNREAD'],
+    });
+  }
+
+  /// Archive a thread (remove the INBOX label).
+  Future<void> archive(String threadId) async {
+    await _post('threads/$threadId/modify', {
+      'removeLabelIds': ['INBOX'],
+    });
+  }
+
+  /// Move a thread to the trash.
+  Future<void> trash(String threadId) async {
+    await _post('threads/$threadId/trash', {});
+  }
+
   Future<void> sendReply({
     required String from,
     required String to,

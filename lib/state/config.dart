@@ -22,6 +22,8 @@ class ConfigNotifier extends Notifier<AppConfig> {
   static const _prefCustomSubAgents = 'custom_subagents';
   static const _prefShortcuts = 'shortcuts';
   static const _prefCustomProviders = 'custom_providers';
+  static const _prefDarkMode = 'dark_mode';
+  static const _prefHasSeenOnboarding = 'has_seen_onboarding';
   static String _prefKey(String provider) => 'key_$provider';
   static String _prefModel(String provider) => 'model_$provider';
   static String _prefBaseUrl(String provider) => 'base_$provider';
@@ -66,6 +68,8 @@ class ConfigNotifier extends Notifier<AppConfig> {
     final daemonMaxIterations = prefs.getInt(_prefDaemonMaxIterations) ?? 5;
     final customSubAgents = _loadCustomSubAgents(prefs);
     final shortcuts = _loadShortcuts(prefs);
+    final darkMode = prefs.getBool(_prefDarkMode) ?? true;
+    final hasSeenOnboarding = prefs.getBool(_prefHasSeenOnboarding) ?? false;
     final providers = Map<String, ProviderConfig>.from(state.providers);
     // Restore user-defined providers (protocol + endpoint + models + key),
     // merged over defaults so built-ins still pick up their persisted values.
@@ -98,6 +102,8 @@ class ConfigNotifier extends Notifier<AppConfig> {
       daemonMaxIterations: daemonMaxIterations,
       customSubAgents: customSubAgents,
       shortcuts: shortcuts,
+      darkMode: darkMode,
+      hasSeenOnboarding: hasSeenOnboarding,
     );
     DaemonService.instance.apply(daemonMode, nightlyTime);
   }
@@ -380,5 +386,17 @@ class ConfigNotifier extends Notifier<AppConfig> {
     state = state.copyWith(daemonMaxIterations: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_prefDaemonMaxIterations, value);
+  }
+
+  Future<void> setDarkMode(bool dark) async {
+    state = state.copyWith(darkMode: dark);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefDarkMode, dark);
+  }
+
+  Future<void> markOnboardingSeen() async {
+    state = state.copyWith(hasSeenOnboarding: true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefHasSeenOnboarding, true);
   }
 }

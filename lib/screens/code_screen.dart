@@ -1741,6 +1741,7 @@ class _FileViewerPanelState extends ConsumerState<_FileViewerPanel> {
   double _maxLineChars = 80;
   bool _editing = false;
   bool _wrap = false;
+  bool _showDiff = false;
   late TextEditingController _editCtrl;
 
   @override
@@ -1891,15 +1892,20 @@ class _FileViewerPanelState extends ConsumerState<_FileViewerPanel> {
                     _editCtrl.text = widget.file.content;
                   }),
                 )
-              : lines == null
-                  ? const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : _CodeView(
-                      lines: lines,
-                      maxLineChars: _maxLineChars,
-                      content: widget.file.content,
-                      wrap: _wrap,
-                    ),
+              : _showDiff
+                  ? _DiffView(
+                      oldContent: widget.file.originalContent,
+                      newContent: widget.file.content,
+                    )
+                  : lines == null
+                      ? const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : _CodeView(
+                          lines: lines,
+                          maxLineChars: _maxLineChars,
+                          content: widget.file.content,
+                          wrap: _wrap,
+                        ),
         ),
         // Footer
         Container(
@@ -1920,6 +1926,29 @@ class _FileViewerPanelState extends ConsumerState<_FileViewerPanel> {
                 style: const TextStyle(fontSize: 11, color: _gutterColor),
               ),
               const Spacer(),
+              // Diff toggle — only when the file has been modified.
+              if (widget.file.content != widget.file.originalContent) ...[
+                GestureDetector(
+                  onTap: () => setState(() => _showDiff = !_showDiff),
+                  child: Row(
+                    children: [
+                      Icon(Icons.difference,
+                          size: 12,
+                          color: _showDiff
+                              ? const Color(0xFF61AFEF)
+                              : _gutterColor),
+                      const SizedBox(width: 4),
+                      Text('diff',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: _showDiff
+                                  ? const Color(0xFF61AFEF)
+                                  : _gutterColor)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+              ],
               // Wrap toggle
               GestureDetector(
                 onTap: () => setState(() => _wrap = !_wrap),
@@ -2061,6 +2090,131 @@ class _CodeView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A simple line-based diff view (green = added, red = removed, grey = context).
+class _DiffView extends StatelessWidget {
+  final String oldContent;
+  final String newContent;
+
+  const _DiffView({required this.oldContent, required this.newContent});
+
+  @override
+  Widget build(BuildContext context) {
+    final oldLines = oldContent.split('\n');
+    final newLines = newContent.split('\n');
+    final ops = _diff(oldLines, newLines);
+
+    return Container(
+      color: _FileViewerPanelState._bg,
+      child: ListView.builder(
+        itemCount: ops.length,
+        itemExtent: 20.0,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemBuilder: (_, i) {
+          final op = ops[i];
+          final (bg, fg, prefix) = switch (op.type) {
+            _DiffType.add => (
+                const Color(0xFF1E3A2A),
+                const Color(0xFF98C379),
+                '+',
+              ),
+            _DiffType.remove => (
+                const Color(0xFF3A1E1E),
+                const Color(0xFFE06C75),
+                '-',
+              ),
+            _DiffType.context => (
+                Colors.transparent,
+                const Color(0xFFABB2BF),
+                ' ',
+              ),
+          };
+          return Container(
+            color: bg,
+            padding: const EdgeInsets.only(left: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 14,
+                  child: Text(
+                    prefix,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: fg,
+                      height: 1,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    op.text,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: fg,
+                      height: 1,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Compute a line-level diff using a simple LCS (dynamic programming).
+  static List<_DiffOp> _diff(List<String> a, List<String> b) {
+    final n = a.length, m = b.length;
+    // dp[i][j] = LCS length of a[i..] and b[j..]
+    final dp = List.generate(n + 1, (_) => List<int>.filled(m + 1, 0));
+    for (var i = n - 1; i >= 0; i--) {
+      for (var j = m - 1; j >= 0; j--) {
+        dp[i][j] = a[i] == b[j]
+            ? dp[i + 1][j + 1] + 1
+            : (dp[i + 1][j] > dp[i][j + 1] ? dp[i + 1][j] : dp[i][j + 1]);
+      }
+    }
+
+    final ops = <_DiffOp>[];
+    var i = 0, j = 0;
+    while (i < n && j < m) {
+      if (a[i] == b[j]) {
+        ops.add(_DiffOp(_DiffType.context, a[i]));
+        i++;
+        j++;
+      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+        ops.add(_DiffOp(_DiffType.remove, a[i]));
+        i++;
+      } else {
+        ops.add(_DiffOp(_DiffType.add, b[j]));
+        j++;
+      }
+    }
+    while (i < n) {
+      ops.add(_DiffOp(_DiffType.remove, a[i]));
+      i++;
+    }
+    while (j < m) {
+      ops.add(_DiffOp(_DiffType.add, b[j]));
+      j++;
+    }
+    return ops;
+  }
+}
+
+enum _DiffType { add, remove, context }
+
+class _DiffOp {
+  final _DiffType type;
+  final String text;
+  const _DiffOp(this.type, this.text);
 }
 
 /// A plain-text editor for a file, with optional wrapping and save/cancel.

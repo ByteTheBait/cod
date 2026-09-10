@@ -141,6 +141,10 @@ class AppConfig {
   /// policies, the anon key can read/write any user's tasks. Set false to
   /// disable remote sync and rely on local storage only.
   final bool minnowSyncEnabled;
+  /// Whether to use the dark theme. Defaults to true.
+  final bool darkMode;
+  /// Whether the user has seen the first-run onboarding. Defaults to false.
+  final bool hasSeenOnboarding;
 
   const AppConfig({
     required this.activeProviderId,
@@ -153,6 +157,8 @@ class AppConfig {
     this.customSubAgents = const [],
     this.shortcuts = const {},
     this.minnowSyncEnabled = true,
+    this.darkMode = true,
+    this.hasSeenOnboarding = false,
   });
 
   /// The key combination for a shortcut id, or its default if not rebound.
@@ -210,6 +216,8 @@ class AppConfig {
     List<SubAgent>? customSubAgents,
     Map<String, String>? shortcuts,
     bool? minnowSyncEnabled,
+    bool? darkMode,
+    bool? hasSeenOnboarding,
   }) =>
       AppConfig(
         activeProviderId: activeProviderId ?? this.activeProviderId,
@@ -222,6 +230,8 @@ class AppConfig {
         customSubAgents: customSubAgents ?? this.customSubAgents,
         shortcuts: shortcuts ?? this.shortcuts,
         minnowSyncEnabled: minnowSyncEnabled ?? this.minnowSyncEnabled,
+        darkMode: darkMode ?? this.darkMode,
+        hasSeenOnboarding: hasSeenOnboarding ?? this.hasSeenOnboarding,
       );
 
   static AppConfig get defaults => AppConfig(

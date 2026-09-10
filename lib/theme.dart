@@ -6,7 +6,75 @@ const _bg = Color(0xFF0C0E18);
 const _surface = Color(0xFF13162A);
 const _surfaceHigh = Color(0xFF1C2040);
 
+// Light theme palette.
+const _lightBg = Color(0xFFF7F7FB);
+const _lightSurface = Color(0xFFFFFFFF);
+const _lightSurfaceHigh = Color(0xFFECECF4);
+
 class CodTheme {
+  /// Pick the theme based on the user's preference.
+  static ThemeData of(bool darkMode) => darkMode ? dark : light;
+
+  static ThemeData get light {
+    final base = ThemeData.light(useMaterial3: true);
+    final scheme = ColorScheme.fromSeed(
+      seedColor: _seed,
+      brightness: Brightness.light,
+    ).copyWith(
+      surface: _lightBg,
+      surfaceContainerLow: _lightSurface,
+      surfaceContainerHigh: _lightSurfaceHigh,
+      surfaceContainer: _lightSurface,
+      onSurface: const Color(0xFF1A1A24),
+      primary: _seed,
+      secondary: const Color(0xFF3B82F6),
+    );
+
+    return base.copyWith(
+      colorScheme: scheme,
+      scaffoldBackgroundColor: _lightBg,
+      textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
+        bodyColor: scheme.onSurface,
+        displayColor: scheme.onSurface,
+      ),
+      cardTheme: CardThemeData(
+        color: _lightSurface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: EdgeInsets.zero,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: _lightSurfaceHigh,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: _lightBg,
+        indicatorColor: _seed.withValues(alpha: 0.15),
+        labelTextStyle: WidgetStateProperty.all(
+          GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500),
+        ),
+        elevation: 0,
+      ),
+      dividerTheme: const DividerThemeData(color: _lightSurfaceHigh, space: 1),
+      appBarTheme: AppBarTheme(
+        backgroundColor: _lightBg,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        titleTextStyle: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
+        iconTheme: IconThemeData(color: scheme.onSurface),
+      ),
+    );
+  }
+
   static ThemeData get dark {
     final base = ThemeData.dark(useMaterial3: true);
     final scheme = ColorScheme.fromSeed(

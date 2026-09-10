@@ -64,8 +64,16 @@ class CodeFile {
   final String path;
   final String name;
   final String content;
+  /// The content of the file when it was first opened (or last saved). Used
+  /// to show a diff when the agent edits the file.
+  final String originalContent;
 
-  const CodeFile({required this.path, required this.name, required this.content});
+  const CodeFile({
+    required this.path,
+    required this.name,
+    required this.content,
+    String? originalContent,
+  }) : originalContent = originalContent ?? content;
 }
 
 // ── Code workspace (a tabbed code session) ────────────────────────────────────
@@ -896,7 +904,10 @@ class CodeNotifier extends Notifier<CodeState> {
     }
 
     final name = path.split('/').last;
-    final files = [...state.openFiles, CodeFile(path: path, name: name, content: content)];
+    final files = [
+      ...state.openFiles,
+      CodeFile(path: path, name: name, content: content, originalContent: content),
+    ];
     state = state.copyWith(openFiles: files, activeFileIndex: files.length - 1);
   }
 
@@ -920,12 +931,18 @@ class CodeNotifier extends Notifier<CodeState> {
     } catch (e) {
       return 'Could not save: $e';
     }
-    // Update the open file tab's content.
+    // Update the open file tab's content. The original content is preserved
+    // so the diff view still shows what the agent changed.
     state = state.copyWith(
       openFiles: [
         for (final f in state.openFiles)
           f.path == path
-              ? CodeFile(path: f.path, name: f.name, content: content)
+              ? CodeFile(
+                  path: f.path,
+                  name: f.name,
+                  content: content,
+                  originalContent: f.originalContent,
+                )
               : f,
       ],
     );

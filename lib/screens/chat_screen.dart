@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/config.dart';
 import '../models/message.dart';
+import '../models/session.dart';
 import '../state/providers.dart';
 import '../widgets/ai_input_field.dart';
 import '../widgets/message_bubble.dart';
@@ -140,6 +141,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         title: Text(active?.title ?? 'Cod'),
         actions: [
+          // Quick session switcher — makes history discoverable without the drawer.
+          if (sessState.sessions.isNotEmpty)
+            _SessionSwitcher(
+              sessions: sessState.sessions,
+              activeId: sessState.activeId,
+              onSelect: (id) =>
+                  ref.read(sessionsProvider.notifier).setActive(id),
+              onNew: () => ref.read(sessionsProvider.notifier).clearActive(),
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: ProviderBadge(
@@ -168,6 +178,104 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onStop: _stop,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A compact dropdown in the Chat app bar to switch between recent sessions
+/// without opening the drawer.
+class _SessionSwitcher extends StatelessWidget {
+  final List<Session> sessions;
+  final String? activeId;
+  final void Function(String) onSelect;
+  final VoidCallback onNew;
+
+  const _SessionSwitcher({
+    required this.sessions,
+    required this.activeId,
+    required this.onSelect,
+    required this.onNew,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return PopupMenuButton<String>(
+      tooltip: 'Switch session',
+      onSelected: (value) {
+        if (value == '__new__') {
+          onNew();
+        } else {
+          onSelect(value);
+        }
+      },
+      itemBuilder: (ctx) => [
+        const PopupMenuItem(
+          value: '__new__',
+          child: Row(
+            children: [
+              Icon(Icons.add, size: 18),
+              SizedBox(width: 8),
+              Text('New chat'),
+            ],
+          ),
+        ),
+        if (sessions.isNotEmpty) const PopupMenuDivider(),
+        ...sessions.take(8).map((s) {
+          final isActive = s.id == activeId;
+          return PopupMenuItem(
+            value: s.id,
+            child: Row(
+              children: [
+                Icon(
+                  isActive ? Icons.radio_button_checked : Icons.radio_button_off,
+                  size: 16,
+                  color: isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.4),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    s.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+      child: Container(
+        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.history, size: 13, color: cs.onSurface.withValues(alpha: 0.6)),
+            const SizedBox(width: 5),
+            Text(
+              'Sessions',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+                color: cs.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(Icons.arrow_drop_down,
+                size: 14, color: cs.onSurface.withValues(alpha: 0.6)),
+          ],
+        ),
       ),
     );
   }

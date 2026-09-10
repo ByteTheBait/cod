@@ -161,6 +161,23 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     return input.keys.join(', ');
   }
 
+  void _showEditSheet(BuildContext context, Task task) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _EditTaskSheet(
+        task: task,
+        onSave: (title, desc) => ref
+            .read(tasksProvider.notifier)
+            .update(task.id, title: title, description: desc),
+      ),
+    );
+  }
+
   Future<void> _send() async {
     final text = _ctrl.text.trim();
     if (text.isEmpty || _streaming) return;
@@ -241,6 +258,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, size: 20),
+            tooltip: 'Edit task',
+            onPressed: () => _showEditSheet(context, task),
+          ),
           GestureDetector(
             onTap: () => ref.read(tasksProvider.notifier).cycleStatus(widget.taskId),
             child: Padding(
@@ -340,6 +362,81 @@ class _StatusLabel extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _EditTaskSheet extends StatefulWidget {
+  final Task task;
+  final void Function(String title, String description) onSave;
+  const _EditTaskSheet({required this.task, required this.onSave});
+
+  @override
+  State<_EditTaskSheet> createState() => _EditTaskSheetState();
+}
+
+class _EditTaskSheetState extends State<_EditTaskSheet> {
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _descCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: widget.task.title);
+    _descCtrl = TextEditingController(text: widget.task.description);
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _descCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Edit task',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _titleCtrl,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Title'),
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _descCtrl,
+            decoration: const InputDecoration(hintText: 'Description (optional)'),
+            maxLines: 3,
+            minLines: 1,
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: () {
+              if (_titleCtrl.text.trim().isEmpty) return;
+              widget.onSave(_titleCtrl.text.trim(), _descCtrl.text.trim());
+              Navigator.pop(context);
+            },
+            style: FilledButton.styleFrom(backgroundColor: cs.primary),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
     );
   }
 }

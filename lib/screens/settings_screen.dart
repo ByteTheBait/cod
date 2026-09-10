@@ -51,6 +51,10 @@ class SettingsScreen extends ConsumerWidget {
             _UpdateBanner(update: update),
             const SizedBox(height: 16),
           ],
+          _SectionHeader('Appearance'),
+          const SizedBox(height: 8),
+          _AppearanceCard(darkMode: config.darkMode),
+          const SizedBox(height: 24),
           _SectionHeader('Active provider'),
           const SizedBox(height: 8),
           _ProviderSelector(
@@ -116,6 +120,50 @@ class _SectionHeader extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
       );
+}
+
+class _AppearanceCard extends ConsumerWidget {
+  final bool darkMode;
+  const _AppearanceCard({required this.darkMode});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(darkMode ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+              size: 20, color: cs.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Theme',
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(
+                  darkMode ? 'Dark' : 'Light',
+                  style: TextStyle(
+                      fontSize: 11, color: cs.onSurface.withValues(alpha: 0.5)),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: darkMode,
+            onChanged: (v) => ref.read(configProvider.notifier).setDarkMode(v),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ProviderSelector extends StatelessWidget {

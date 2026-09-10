@@ -13,17 +13,18 @@ import 'screens/tasks_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/settings_screen.dart';
 
-class CodApp extends StatelessWidget {
+class CodApp extends ConsumerWidget {
   /// A folder to open in the Code tab on launch (from a CLI arg).
   final String? initialFolder;
   const CodApp({super.key, this.initialFolder});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final darkMode = ref.watch(configProvider).darkMode;
     return MaterialApp(
       title: 'Cod',
       debugShowCheckedModeBanner: false,
-      theme: CodTheme.dark,
+      theme: CodTheme.of(darkMode),
       home: _Shell(initialFolder: initialFolder),
     );
   }
@@ -58,6 +59,12 @@ class _ShellState extends ConsumerState<_Shell> {
       await Future.delayed(const Duration(milliseconds: 500));
       ref.read(tasksProvider.notifier).pruneExpired(config.taskTtlDays);
 
+      // First-run onboarding: guide the user to set up an API key.
+      if (!config.hasSeenOnboarding) {
+        await ref.read(configProvider.notifier).markOnboardingSeen();
+        if (mounted) _showOnboarding();
+      }
+
       // Open a folder passed on the command line, if any.
       final initial = widget.initialFolder;
       if (initial != null && initial.isNotEmpty) {
@@ -78,6 +85,45 @@ class _ShellState extends ConsumerState<_Shell> {
     });
 
     _registerCommands();
+  }
+
+  /// Show a first-run welcome dialog that points the user to Settings to
+  /// configure an API key.
+  void _showOnboarding() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(ctx).colorScheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.auto_awesome, color: Color(0xFF7C3AED)),
+            SizedBox(width: 8),
+            Text('Welcome to Cod'),
+          ],
+        ),
+        content: const Text(
+          'Cod is your AI assistant for chat, email, calendar, code, and tasks.\n\n'
+          'To get started, add an API key for your preferred provider '
+          '(Claude, Gemini, Groq, or a local Ollama instance) in Settings.\n\n'
+          'You can also connect your Google account for Gmail and Calendar.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ref.read(tabIndexProvider.notifier).set(5); // Settings
+            },
+            child: const Text('Set up now'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _registerCommands() {

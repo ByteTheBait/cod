@@ -125,40 +125,94 @@ class _SetupViewState extends ConsumerState<_SetupView> {
 
 // ── Inbox ────────────────────────────────────────────────────────────────────
 
-class _InboxView extends ConsumerWidget {
+class _InboxView extends ConsumerStatefulWidget {
   final bool loading;
   const _InboxView({required this.loading});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_InboxView> createState() => _InboxViewState();
+}
+
+class _InboxViewState extends ConsumerState<_InboxView> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  bool _matches(GmailThread t, String q) {
+    if (q.isEmpty) return true;
+    final haystack = '${t.subject} ${t.from} ${t.snippet}'.toLowerCase();
+    return q.split(' ').every((term) => haystack.contains(term));
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final threads = ref.watch(emailProvider).threads;
     final cs = Theme.of(context).colorScheme;
+    final q = _query.trim().toLowerCase();
+    final filtered = q.isEmpty ? threads : threads.where((t) => _matches(t, q)).toList();
 
-    if (loading && threads.isEmpty) {
+    if (widget.loading && threads.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (threads.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.inbox_outlined, size: 48, color: cs.primary.withValues(alpha: 0.4)),
-            const SizedBox(height: 12),
-            Text('Inbox empty',
-                style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5))),
-          ],
+    return Column(
+      children: [
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: TextField(
+            controller: _searchCtrl,
+            onChanged: (v) => setState(() => _query = v),
+            decoration: InputDecoration(
+              hintText: 'Search inbox…',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        setState(() => _query = '');
+                      },
+                    ),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            ),
+          ),
         ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: () => ref.read(emailProvider.notifier).refresh(),
-      child: ListView.separated(
-        itemCount: threads.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (ctx, i) => _ThreadTile(thread: threads[i]),
-      ),
+        Expanded(
+          child: threads.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.inbox_outlined, size: 48, color: cs.primary.withValues(alpha: 0.4)),
+                      const SizedBox(height: 12),
+                      Text('Inbox empty',
+                          style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5))),
+                    ],
+                  ),
+                )
+              : filtered.isEmpty
+                  ? Center(
+                      child: Text('No matches for "$_query"',
+                          style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5))),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: () => ref.read(emailProvider.notifier).refresh(),
+                      child: ListView.separated(
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (ctx, i) => _ThreadTile(thread: filtered[i]),
+                      ),
+                    ),
+        ),
+      ],
     );
   }
 }
@@ -394,6 +448,47 @@ class _ThreadDetailScreenState extends ConsumerState<_ThreadDetailScreen> {
     );
   }
 
+  Future<void> _markUnread() async {
+    try {
+      await GmailService.instance.markUnread(widget.threadId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Marked as unread')),
+        );
+      }
+    } catch (e) {
+      _showError(e.toString());
+    }
+  }
+
+  Future<void> _archive() async {
+    try {
+      await GmailService.instance.archive(widget.threadId);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Archived')),
+        );
+      }
+    } catch (e) {
+      _showError(e.toString());
+    }
+  }
+
+  Future<void> _trash() async {
+    try {
+      await GmailService.instance.trash(widget.threadId);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Moved to trash')),
+        );
+      }
+    } catch (e) {
+      _showError(e.toString());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final thread = ref.watch(emailProvider).threads.where((t) => t.id == widget.threadId).firstOrNull;
@@ -444,6 +539,24 @@ class _ThreadDetailScreenState extends ConsumerState<_ThreadDetailScreen> {
                           icon: Icons.reply,
                           label: 'Reply',
                           onTap: _openReplyEditor,
+                        ),
+                        const Spacer(),
+                        _ActionChip(
+                          icon: Icons.mark_email_unread_outlined,
+                          label: 'Unread',
+                          onTap: _markUnread,
+                        ),
+                        const SizedBox(width: 8),
+                        _ActionChip(
+                          icon: Icons.archive_outlined,
+                          label: 'Archive',
+                          onTap: _archive,
+                        ),
+                        const SizedBox(width: 8),
+                        _ActionChip(
+                          icon: Icons.delete_outline,
+                          label: 'Trash',
+                          onTap: _trash,
                         ),
                       ],
                     ],

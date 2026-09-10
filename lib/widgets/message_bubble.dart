@@ -77,10 +77,35 @@ class MessageBubble extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 6, bottom: 2),
                 child: _CopyButton(content: message.content),
               ),
+            // Timestamp for completed messages.
+            if (!message.isStreaming)
+              Padding(
+                padding: EdgeInsets.only(
+                  left: isUser ? 0 : 6,
+                  right: isUser ? 6 : 0,
+                  top: 1,
+                ),
+                child: Text(
+                  _timeLabel(message.timestamp),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: cs.onSurface.withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  String _timeLabel(DateTime t) {
+    final now = DateTime.now();
+    final local = t.toLocal();
+    final h = local.hour.toString().padLeft(2, '0');
+    final m = local.minute.toString().padLeft(2, '0');
+    if (now.difference(local).inDays == 0) return '$h:$m';
+    return '${local.month}/${local.day} $h:$m';
   }
 }
 
