@@ -489,6 +489,13 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
   void _showSnack(String msg) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 
+  /// Fill the input with a suggestion and run the agent immediately.
+  void _sendSuggestion(String text) {
+    if (ref.read(codeProvider).isRunning) return;
+    _inputCtrl.text = text;
+    _send();
+  }
+
   @override
   Widget build(BuildContext context) {
     final codeState = ref.watch(codeProvider);
@@ -564,6 +571,7 @@ class _CodeScreenState extends ConsumerState<CodeScreen> {
                                 entries: codeState.entries,
                                 scrollCtrl: _scrollCtrl,
                                 workingDir: codeState.workingDir,
+                                onSuggestion: _sendSuggestion,
                               )
                             : _FileViewerPanel(
                                 file: codeState
@@ -1572,16 +1580,18 @@ class _AgentPanel extends StatelessWidget {
   final List<CodeEntry> entries;
   final ScrollController scrollCtrl;
   final String workingDir;
+  final void Function(String) onSuggestion;
 
   const _AgentPanel({
     required this.entries,
     required this.scrollCtrl,
     required this.workingDir,
+    required this.onSuggestion,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (entries.isEmpty) return _EmptyAgent(workingDir: workingDir);
+    if (entries.isEmpty) return _EmptyAgent(workingDir: workingDir, onSuggestion: onSuggestion);
     return ListView.builder(
       controller: scrollCtrl,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1593,7 +1603,8 @@ class _AgentPanel extends StatelessWidget {
 
 class _EmptyAgent extends StatelessWidget {
   final String workingDir;
-  const _EmptyAgent({required this.workingDir});
+  final void Function(String) onSuggestion;
+  const _EmptyAgent({required this.workingDir, required this.onSuggestion});
 
   @override
   Widget build(BuildContext context) {
@@ -1620,7 +1631,7 @@ class _EmptyAgent extends StatelessWidget {
               ),
         ),
         const SizedBox(height: 20),
-        ...suggestions.map((s) => _SuggestionTile(text: s)),
+        ...suggestions.map((s) => _SuggestionTile(text: s, onTap: () => onSuggestion(s))),
       ],
     );
   }
@@ -1628,30 +1639,35 @@ class _EmptyAgent extends StatelessWidget {
 
 class _SuggestionTile extends StatelessWidget {
   final String text;
-  const _SuggestionTile({required this.text});
+  final VoidCallback onTap;
+  const _SuggestionTile({required this.text, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 7),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: cs.surfaceContainerHigh),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.arrow_forward,
-              size: 13, color: cs.primary.withValues(alpha: 0.5)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(text,
-                style: TextStyle(
-                    fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6))),
-          ),
-        ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: cs.surfaceContainerHigh),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.arrow_forward,
+                size: 13, color: cs.primary.withValues(alpha: 0.5)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(text,
+                  style: TextStyle(
+                      fontSize: 13, color: cs.onSurface.withValues(alpha: 0.6))),
+            ),
+          ],
+        ),
       ),
     );
   }

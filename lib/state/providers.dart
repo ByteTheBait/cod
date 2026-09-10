@@ -11,6 +11,7 @@ import 'email.dart';
 import 'code.dart';
 import 'calendar.dart';
 import 'update.dart';
+import 'tab_index.dart';
 
 /// The set of LLM providers the active config defines. Because [providerFor]
 /// routes by protocol, this is NOT limited to a hardcoded id list — every
@@ -50,3 +51,7 @@ final minnowSyncProvider = Provider<MinnowSync>((ref) {
   ref.onDispose(sync.dispose);
   return sync;
 });
+
+/// The currently selected bottom-navigation tab index. Exposed so any screen
+/// (e.g. Calendar's "Go to Settings") can switch tabs programmatically.
+final tabIndexProvider = NotifierProvider<TabIndexNotifier, int>(TabIndexNotifier.new);

@@ -3,12 +3,20 @@
 # release.sh — build, tag, and release a new version of Cod.
 #
 # Usage:
-#   ./release.sh <version> [--build N]
+#   ./release.sh <version> [--build N] [--title T] [--description D]
 #
 #   <version>   Semantic version in X.Y.Z form (e.g. 2.7.1). The build number
 #               defaults to 1 and can be overridden with --build.
 #
 #   --build N   Build number appended after '+'. Defaults to 1.
+#
+#   --title T   Release subject/title. When both --title and --description are
+#               given, the interactive editor is skipped entirely.
+#
+#   --description D
+#               Release description/body. When both --title and --description
+#               are given, the interactive editor is skipped entirely. If only
+#               one is provided, the editor opens pre-filled with it.
 #
 #   --swap-apps Delete ~/Applications/Cod.app and replace it with the new
 #               build. If it's not found there, prompts before continuing
@@ -35,6 +43,8 @@ set -euo pipefail
 VERSION=""
 BUILD="1"
 SWAP_APPS=false
+TITLE=""
+DESCRIPTION=""
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -45,6 +55,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --version|-v)
       VERSION="$2"
+      shift 2
+      ;;
+    --title|-t)
+      TITLE="$2"
+      shift 2
+      ;;
+    --description|-d)
+      DESCRIPTION="$2"
       shift 2
       ;;
     --swap-apps)
@@ -160,8 +178,13 @@ git commit -m "Bump version to ${VERSION}" >/dev/null
 echo "→ Committed version bump"
 
 # ── Editor for subject + description ─────────────────────────────────────────
-TMPFILE="$(mktemp)"
-cat > "$TMPFILE" <<EOF
+# If both --title and --description were given, skip the editor entirely.
+if [[ -n "$TITLE" && -n "$DESCRIPTION" ]]; then
+  SUBJECT="$TITLE"
+  echo "→ Using --title/--description (skipping editor)."
+else
+  TMPFILE="$(mktemp)"
+  cat > "$TMPFILE" <<EOF
 # Release notes for ${TAG}
 # ─────────────────────────────────────────────────────────────
 # First line:  the subject (title) of the release.
@@ -170,26 +193,27 @@ cat > "$TMPFILE" <<EOF
 # Lines starting with '#' are ignored.
 # ─────────────────────────────────────────────────────────────
 
-${VERSION}
+${TITLE:-${VERSION}}
 
-Describe what changed in this release...
+${DESCRIPTION:-Describe what changed in this release...}
 EOF
 
-EDITOR_BIN="${EDITOR:-vi}"
-echo "→ Opening ${EDITOR_BIN} to write release notes..."
-"$EDITOR_BIN" "$TMPFILE"
+  EDITOR_BIN="${EDITOR:-vi}"
+  echo "→ Opening ${EDITOR_BIN} to write release notes..."
+  "$EDITOR_BIN" "$TMPFILE"
 
-# ── Parse subject + description ──────────────────────────────────────────────
-# Strip comment lines, then take the first non-empty line as subject and the
-# rest (after the first blank line) as the description.
-CLEAN="$(grep -v '^#' "$TMPFILE" | sed '/^[[:space:]]*$/d')"
-SUBJECT="$(echo "$CLEAN" | head -1)"
-DESCRIPTION="$(echo "$CLEAN" | tail -n +2)"
+  # ── Parse subject + description ────────────────────────────────────────────
+  # Strip comment lines, then take the first non-empty line as subject and the
+  # rest (after the first blank line) as the description.
+  CLEAN="$(grep -v '^#' "$TMPFILE" | sed '/^[[:space:]]*$/d')"
+  SUBJECT="$(echo "$CLEAN" | head -1)"
+  DESCRIPTION="$(echo "$CLEAN" | tail -n +2)"
 
-if [[ -z "$SUBJECT" ]]; then
-  echo "Error: no subject provided in the release notes." >&2
-  rm -f "$TMPFILE"
-  exit 1
+  if [[ -z "$SUBJECT" ]]; then
+    echo "Error: no subject provided in the release notes." >&2
+    rm -f "$TMPFILE"
+    exit 1
+  fi
 fi
 
 echo ""
@@ -201,7 +225,7 @@ echo ""
 # ── Create annotated git tag ──────────────────────────────────────────────────
 if git rev-parse "$TAG" >/dev/null 2>&1; then
   echo "Error: tag ${TAG} already exists." >&2
-  rm -f "$TMPFILE"
+  rm -f "${TMPFILE:-}"
   exit 1
 fi
 
@@ -232,6 +256,6 @@ else
   echo "→ 'gh' not found — skipping GitHub release. Tag ${TAG} pushed."
 fi
 
-rm -f "$TMPFILE"
+rm -f "${TMPFILE:-}"
 echo ""
 echo "Done. Released ${TAG} (${FULL_VERSION})."

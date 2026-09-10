@@ -69,11 +69,8 @@ class _SetupView extends ConsumerWidget {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: () {
-                // Navigate to Settings tab (index 5)
-                // Use a messenger approach — pop all and switch tab
-                Navigator.of(context).popUntil((r) => r.isFirst);
-              },
+              onPressed: () =>
+                  ref.read(tabIndexProvider.notifier).set(5),
               icon: const Icon(Icons.settings_outlined),
               label: const Text('Go to Settings'),
             ),

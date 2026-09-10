@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/config.dart';
@@ -18,12 +19,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _ctrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   bool _streaming = false;
+  StreamSubscription<String>? _streamSub;
 
   @override
   void dispose() {
+    _streamSub?.cancel();
     _ctrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  /// Cancel an in-flight streaming response.
+  void _stop() {
+    _streamSub?.cancel();
+    _streamSub = null;
+    final sessions = ref.read(sessionsProvider.notifier);
+    final sessionId = ref.read(sessionsProvider).activeId;
+    if (sessionId != null) {
+      sessions.finalizeStreaming(sessionId);
+    }
+    if (mounted) setState(() => _streaming = false);
   }
 
   void _scrollToBottom() {
@@ -57,43 +72,49 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
       sessionId = s.id;
     }
+    final sid = sessionId;
 
-    await sessions.addMessage(sessionId, Message.user(text));
+    await sessions.addMessage(sid, Message.user(text));
     _scrollToBottom();
 
     final placeholder = Message.assistant('', isStreaming: true);
-    await sessions.addMessage(sessionId, placeholder);
+    await sessions.addMessage(sid, placeholder);
     setState(() => _streaming = true);
     _scrollToBottom();
 
     final history = ref
         .read(sessionsProvider)
         .sessions
-        .firstWhere((s) => s.id == sessionId)
+        .firstWhere((s) => s.id == sid)
         .messages
         .where((m) => !m.isStreaming)
         .toList();
 
     String accumulated = '';
-    try {
-      await for (final chunk in llm.stream(
-        messages: history,
-        model: config.modelFor(Feature.chat),
-        apiKey: config.active.apiKey,
-        baseUrl: config.active.baseUrl.isNotEmpty ? config.active.baseUrl : null,
-      )) {
+    _streamSub = llm
+        .stream(
+          messages: history,
+          model: config.modelFor(Feature.chat),
+          apiKey: config.active.apiKey,
+          baseUrl: config.active.baseUrl.isNotEmpty ? config.active.baseUrl : null,
+        )
+        .listen(
+      (chunk) {
         accumulated += chunk;
-        sessions.updateStreaming(sessionId, accumulated);
+        sessions.updateStreaming(sid, accumulated);
         _scrollToBottom();
-      }
-    } catch (e) {
-      accumulated = '_Error: ${e}_';
-      sessions.updateStreaming(sessionId, accumulated);
-    }
-
-    await sessions.finalizeStreaming(sessionId);
-    setState(() => _streaming = false);
-    _scrollToBottom();
+      },
+      onError: (e) {
+        accumulated = '_Error: ${e}_';
+        sessions.updateStreaming(sid, accumulated);
+      },
+      onDone: () async {
+        _streamSub = null;
+        await sessions.finalizeStreaming(sid);
+        if (mounted) setState(() => _streaming = false);
+        _scrollToBottom();
+      },
+    );
   }
 
   @override
@@ -144,6 +165,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ctrl: _ctrl,
             streaming: _streaming,
             onSend: _send,
+            onStop: _stop,
           ),
         ],
       ),
@@ -155,11 +177,13 @@ class _InputBar extends StatelessWidget {
   final TextEditingController ctrl;
   final bool streaming;
   final VoidCallback onSend;
+  final VoidCallback onStop;
 
   const _InputBar({
     required this.ctrl,
     required this.streaming,
     required this.onSend,
+    required this.onStop,
   });
 
   @override
@@ -187,21 +211,18 @@ class _InputBar extends StatelessWidget {
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 150),
             child: streaming
-                ? SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: cs.primary,
-                        ),
-                      ),
+                ? IconButton.filled(
+                    key: const ValueKey('stop'),
+                    onPressed: onStop,
+                    tooltip: 'Stop generating',
+                    icon: const Icon(Icons.stop),
+                    style: IconButton.styleFrom(
+                      backgroundColor: cs.error,
+                      foregroundColor: cs.onError,
                     ),
                   )
                 : IconButton.filled(
+                    key: const ValueKey('send'),
                     onPressed: onSend,
                     icon: const Icon(Icons.arrow_upward),
                     style: IconButton.styleFrom(

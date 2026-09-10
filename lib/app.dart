@@ -38,8 +38,6 @@ class _Shell extends ConsumerStatefulWidget {
 }
 
 class _ShellState extends ConsumerState<_Shell> {
-  int _index = 0;
-
   @override
   void initState() {
     super.initState();
@@ -74,7 +72,7 @@ class _ShellState extends ConsumerState<_Shell> {
         final path = call.arguments as String?;
         if (path != null && path.isNotEmpty) {
           await ref.read(codeProvider.notifier).setWorkingDirFromPath(path);
-          if (mounted) setState(() => _index = 3); // jump to Code tab
+          ref.read(tabIndexProvider.notifier).set(3); // jump to Code tab
         }
       }
     });
@@ -96,42 +94,42 @@ class _ShellState extends ConsumerState<_Shell> {
       title: 'Go to Chat',
       icon: Icons.chat_bubble_outline,
       shortcut: 'cmd+1',
-      run: () => setState(() => _index = 0),
+      run: () => ref.read(tabIndexProvider.notifier).set(0),
     ));
     reg.register(Command(
       id: 'switch_email',
       title: 'Go to Email',
       icon: Icons.mail_outline,
       shortcut: 'cmd+2',
-      run: () => setState(() => _index = 1),
+      run: () => ref.read(tabIndexProvider.notifier).set(1),
     ));
     reg.register(Command(
       id: 'switch_calendar',
       title: 'Go to Calendar',
       icon: Icons.calendar_month_outlined,
       shortcut: 'cmd+3',
-      run: () => setState(() => _index = 2),
+      run: () => ref.read(tabIndexProvider.notifier).set(2),
     ));
     reg.register(Command(
       id: 'switch_code',
       title: 'Go to Code',
       icon: Icons.code_outlined,
       shortcut: 'cmd+4',
-      run: () => setState(() => _index = 3),
+      run: () => ref.read(tabIndexProvider.notifier).set(3),
     ));
     reg.register(Command(
       id: 'switch_tasks',
       title: 'Go to Tasks',
       icon: Icons.checklist_outlined,
       shortcut: 'cmd+5',
-      run: () => setState(() => _index = 4),
+      run: () => ref.read(tabIndexProvider.notifier).set(4),
     ));
     reg.register(Command(
       id: 'switch_settings',
       title: 'Go to Settings',
       icon: Icons.settings_outlined,
       shortcut: 'cmd+6',
-      run: () => setState(() => _index = 5),
+      run: () => ref.read(tabIndexProvider.notifier).set(5),
     ));
   }
 
@@ -214,6 +212,7 @@ class _ShellState extends ConsumerState<_Shell> {
 
   @override
   Widget build(BuildContext context) {
+    final index = ref.watch(tabIndexProvider);
     return Focus(
       autofocus: true,
       onKeyEvent: (node, event) {
@@ -223,10 +222,10 @@ class _ShellState extends ConsumerState<_Shell> {
         return KeyEventResult.ignored;
       },
       child: Scaffold(
-      body: IndexedStack(index: _index, children: _screens),
+      body: IndexedStack(index: index, children: _screens),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        selectedIndex: index,
+        onDestinationSelected: (i) => ref.read(tabIndexProvider.notifier).set(i),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.chat_bubble_outline),
